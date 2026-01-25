@@ -72,6 +72,16 @@ impl RecorderError {
         )
     }
 
+    /// Unsupported Windows version.
+    #[allow(dead_code)]
+    pub fn unsupported_windows_version() -> Self {
+        Self::new(
+            "UNSUPPORTED_WINDOWS_VERSION",
+            "This application requires Windows 10 version 1903 (build 18362) or later.".to_string(),
+            Some("The Windows Graphics Capture API is not available on your system. Please update Windows or use a newer version.".to_string()),
+        )
+    }
+
     /// File system error (read/write/create).
     pub fn file_error(reason: impl Into<String>) -> Self {
         Self::new(

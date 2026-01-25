@@ -13,6 +13,25 @@ use windows_capture::settings::{
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 
+/// Check if Windows version supports Graphics Capture API (Windows 10 1903+, build 18362+)
+fn check_windows_version() -> Result<(), RecorderError> {
+    // The Graphics Capture API requires Windows 10 version 1903 (build 18362) or later
+    // We'll try to enumerate monitors - if it fails, the API is not available
+    match Monitor::enumerate() {
+        Ok(monitors) if !monitors.is_empty() => Ok(()),
+        Ok(_) => Err(RecorderError::device_not_found("No displays found")),
+        Err(e) => {
+            let err_str = e.to_string().to_lowercase();
+            // Check if the error indicates unsupported Windows version
+            if err_str.contains("not supported") || err_str.contains("0x80070032") || err_str.contains("class not registered") {
+                Err(RecorderError::unsupported_windows_version())
+            } else {
+                Err(RecorderError::device_not_found(format!("Display enumeration failed: {}", e)))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub data: Vec<u8>,
@@ -97,7 +116,17 @@ impl ScreenCapturer {
             return Err(RecorderError::invalid_settings("Invalid target resolution"));
         }
 
-        let monitors = Monitor::enumerate().map_err(|e| RecorderError::device_not_found(e.to_string()))?;
+        // Check Windows version compatibility first
+        check_windows_version()?;
+
+        let monitors = Monitor::enumerate().map_err(|e| {
+            let err_str = e.to_string().to_lowercase();
+            if err_str.contains("not supported") || err_str.contains("class not registered") {
+                RecorderError::unsupported_windows_version()
+            } else {
+                RecorderError::device_not_found(e.to_string())
+            }
+        })?;
         let monitor = monitors
             .get(display_index as usize)
             .cloned()

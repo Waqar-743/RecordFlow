@@ -64,7 +64,18 @@ fn monitor_rect(monitor: &Monitor) -> Result<RECT, RecorderError> {
 /// List connected monitors.
 #[tauri::command]
 pub async fn get_displays() -> Result<Vec<DisplayInfo>, RecorderError> {
-    let monitors = Monitor::enumerate().map_err(|e| RecorderError::file_error(e.to_string()))?;
+    let monitors = Monitor::enumerate().map_err(|e| {
+        let err_str = e.to_string().to_lowercase();
+        if err_str.contains("not supported") || err_str.contains("class not registered") || err_str.contains("0x80070032") {
+            RecorderError::new(
+                "UNSUPPORTED_WINDOWS_VERSION",
+                "Screen capture requires Windows 10 version 1903 or later.",
+                Some("Please update Windows to use screen recording features.".to_string()),
+            )
+        } else {
+            RecorderError::file_error(e.to_string())
+        }
+    })?;
     if monitors.is_empty() {
         return Err(RecorderError::device_not_found("Display"));
     }
@@ -110,8 +121,15 @@ pub async fn get_displays() -> Result<Vec<DisplayInfo>, RecorderError> {
 #[tauri::command]
 pub async fn get_cameras() -> Result<Vec<CameraInfo>, RecorderError> {
     // NOTE: nokhwa may not work on all machines due to backend/native dependencies.
-    let cams = nokhwa::query(nokhwa::utils::ApiBackend::Auto)
-        .map_err(|e| RecorderError::device_not_found(format!("Camera ({})", e)))?;
+    // Return empty list instead of error if camera detection fails
+    let cams = match nokhwa::query(nokhwa::utils::ApiBackend::Auto) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("RecordFlow: Camera detection failed (this is often normal if no camera is connected): {}", e);
+            // Return empty list instead of error - camera is optional
+            return Ok(Vec::new());
+        }
+    };
 
     let mut out = Vec::with_capacity(cams.len());
     for (idx, cam) in cams.iter().enumerate() {
@@ -137,9 +155,14 @@ pub async fn get_cameras() -> Result<Vec<CameraInfo>, RecorderError> {
 #[tauri::command]
 pub async fn get_audio_inputs() -> Result<Vec<AudioDeviceInfo>, RecorderError> {
     let host = cpal::default_host();
-    let devices = host
-        .input_devices()
-        .map_err(|e| RecorderError::device_not_found(format!("Microphone ({})", e)))?;
+    let devices = match host.input_devices() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("RecordFlow: Audio input enumeration failed: {}", e);
+            // Return empty list if no audio devices can be enumerated
+            return Ok(Vec::new());
+        }
+    };
 
     let mut out = Vec::new();
     for (idx, dev) in devices.enumerate() {
@@ -165,9 +188,14 @@ pub async fn get_audio_inputs() -> Result<Vec<AudioDeviceInfo>, RecorderError> {
 #[tauri::command]
 pub async fn get_system_audio_devices() -> Result<Vec<AudioDeviceInfo>, RecorderError> {
     let host = cpal::default_host();
-    let devices = host
-        .output_devices()
-        .map_err(|e| RecorderError::device_not_found(format!("System Audio ({})", e)))?;
+    let devices = match host.output_devices() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("RecordFlow: System audio enumeration failed: {}", e);
+            // Return empty list if no audio devices can be enumerated
+            return Ok(Vec::new());
+        }
+    };
 
     let mut out = Vec::new();
     for (idx, dev) in devices.enumerate() {
