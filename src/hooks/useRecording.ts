@@ -56,14 +56,25 @@ export function useRecording(): UseRecordingResult {
     };
   }, []);
 
-  const run = useCallback(async (fn: () => Promise<unknown>) => {
+  const run = useCallback(async (fn: () => Promise<unknown>, actionName: string = "action") => {
     setError(null);
     setLoading(true);
     try {
       await fn();
       await refresh();
-    } catch (e) {
-      setError(String(e));
+    } catch (e: unknown) {
+      console.error(`Recording ${actionName} failed:`, e);
+      // Format error message for display
+      let errorMessage: string;
+      if (e instanceof Error) {
+        errorMessage = e.message;
+      } else if (e && typeof e === 'object' && 'message' in e) {
+        const err = e as { message: string; details?: string };
+        errorMessage = err.details ? `${err.message}: ${err.details}` : err.message;
+      } else {
+        errorMessage = String(e);
+      }
+      setError(errorMessage);
       await refresh();
     } finally {
       setLoading(false);
@@ -74,9 +85,21 @@ export function useRecording(): UseRecordingResult {
     setError(null);
     setLoading(true);
     try {
-      await tauriService.startRecording();
-    } catch (e) {
-      setError(String(e));
+      const result = await tauriService.startRecording();
+      console.log("Recording started:", result);
+    } catch (e: unknown) {
+      console.error("Recording start failed:", e);
+      // Format error message for display
+      let errorMessage: string;
+      if (e instanceof Error) {
+        errorMessage = e.message;
+      } else if (e && typeof e === 'object' && 'message' in e) {
+        const err = e as { message: string; details?: string };
+        errorMessage = err.details ? `${err.message}: ${err.details}` : err.message;
+      } else {
+        errorMessage = String(e);
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
       await refresh();
@@ -86,19 +109,19 @@ export function useRecording(): UseRecordingResult {
   const stop = useCallback(async () => {
     await run(async () => {
       await tauriService.stopRecording();
-    });
+    }, "stop");
   }, [run]);
 
   const pause = useCallback(async () => {
     await run(async () => {
       await tauriService.pauseRecording();
-    });
+    }, "pause");
   }, [run]);
 
   const resume = useCallback(async () => {
     await run(async () => {
       await tauriService.resumeRecording();
-    });
+    }, "resume");
   }, [run]);
 
   const result = useMemo(

@@ -112,16 +112,33 @@ async function invoke<T>(cmd: string, args?: any): Promise<T> {
     return undefined as unknown as T;
   }
 
-  const timeoutMs = 10_000;
-  return await Promise.race([
-    tauriInvoke<T>(cmd, args),
-    new Promise<T>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(`Tauri IPC timed out after ${timeoutMs}ms (command: ${cmd})`)),
-        timeoutMs,
+  // Recording operations can take time (device initialization, encoder setup)
+  // Use longer timeout for recording commands, shorter for quick queries
+  const isRecordingCommand = cmd === "start_recording" || cmd === "stop_recording";
+  const timeoutMs = isRecordingCommand ? 30_000 : 10_000;
+  
+  try {
+    return await Promise.race([
+      tauriInvoke<T>(cmd, args),
+      new Promise<T>((_, reject) =>
+        window.setTimeout(
+          () => reject(new Error(`Tauri IPC timed out after ${timeoutMs}ms (command: ${cmd})`)),
+          timeoutMs,
+        ),
       ),
-    ),
-  ]);
+    ]);
+  } catch (error: unknown) {
+    // Format error for better display
+    if (error && typeof error === 'object' && 'message' in error) {
+      throw error;
+    }
+    // Handle Tauri's error format (object with code/message/details)
+    if (error && typeof error === 'object' && 'code' in error) {
+      const e = error as { code: string; message: string; details?: string };
+      throw new Error(e.details ? `${e.message}: ${e.details}` : e.message);
+    }
+    throw new Error(String(error));
+  }
 }
 
 export const tauriService = {

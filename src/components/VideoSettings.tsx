@@ -1,53 +1,54 @@
 import type { Resolution } from "../types";
+import { SectionWrapper } from "./SectionWrapper";
 
 type Props = {
   selectedResolution: Resolution;
   onResolutionChange: (resolution: Resolution) => void;
 };
 
-const dims: Record<Resolution, string> = {
-  "720p": "1280x720",
-  "1080p": "1920x1080",
-};
-
 export function VideoSettings({ selectedResolution, onResolutionChange }: Props) {
   return (
-    <section className="rf-card">
-      <div className="rf-card-title">Video</div>
-
-      <div className="rf-row">
-        <button
-          className={selectedResolution === "720p" ? "rf-chip rf-chip-on" : "rf-chip"}
-          onClick={() => onResolutionChange("720p")}
-          type="button"
-        >
-          720p
-        </button>
-        <button
-          className={selectedResolution === "1080p" ? "rf-chip rf-chip-on" : "rf-chip"}
-          onClick={() => onResolutionChange("1080p")}
-          type="button"
-        >
-          1080p
-        </button>
+    <SectionWrapper title="Video">
+      <div className="flex items-center gap-12 flex-wrap">
+        <div className="flex bg-gray-200 p-1 rounded-md">
+          <button 
+            onClick={() => onResolutionChange("720p")}
+            className={`px-6 py-1 rounded text-sm font-semibold transition-all ${
+              selectedResolution === "720p" 
+                ? "bg-white text-gray-900 shadow-sm" 
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            type="button"
+          >
+            720p
+          </button>
+          <button 
+            onClick={() => onResolutionChange("1080p")}
+            className={`px-6 py-1 rounded text-sm font-semibold transition-all ${
+              selectedResolution === "1080p" 
+                ? "bg-blue-600 text-white shadow-sm" 
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            type="button"
+          >
+            1080p
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-4 gap-x-12 gap-y-1">
+          <div className="text-xs font-bold text-gray-400 uppercase">Resolution:</div>
+          <div className="text-xs font-bold text-gray-400 uppercase">FPS:</div>
+          <div className="text-xs font-bold text-gray-400 uppercase">Bitrate:</div>
+          <div className="text-xs font-bold text-gray-400 uppercase">Format:</div>
+          
+          <div className="text-sm font-medium text-gray-800">
+            {selectedResolution === "1080p" ? "1920x1080" : "1280x720"}
+          </div>
+          <div className="text-sm font-medium text-gray-800">30</div>
+          <div className="text-sm font-medium text-gray-800">5000 kbps</div>
+          <div className="text-sm font-medium text-gray-800">MP4 - H.264</div>
+        </div>
       </div>
-
-      <div className="rf-kv">
-        <div className="rf-k">Resolution</div>
-        <div className="rf-v">{dims[selectedResolution]}</div>
-      </div>
-      <div className="rf-kv">
-        <div className="rf-k">FPS</div>
-        <div className="rf-v">30</div>
-      </div>
-      <div className="rf-kv">
-        <div className="rf-k">Bitrate</div>
-        <div className="rf-v">5000 kbps</div>
-      </div>
-      <div className="rf-kv">
-        <div className="rf-k">Format</div>
-        <div className="rf-v">MP4 - H.264</div>
-      </div>
-    </section>
+    </SectionWrapper>
   );
 }

@@ -2,6 +2,9 @@
 
 use crate::error::RecorderError;
 use crate::state::app_state::{CameraPosition, CameraSize};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static OVERLAY_COUNT: AtomicU64 = AtomicU64::new(0);
 
 pub struct FrameCompositor;
 
@@ -16,6 +19,26 @@ impl FrameCompositor {
         position: CameraPosition,
         size: CameraSize,
     ) -> Result<(), RecorderError> {
+        let count = OVERLAY_COUNT.fetch_add(1, Ordering::Relaxed);
+
+        // Log first overlay and every 100 overlays
+        if count == 0 {
+            eprintln!("RecordFlow: Compositor starting overlay operations");
+            eprintln!(
+                "  Screen: {}x{} ({} bytes)",
+                screen_width,
+                screen_height,
+                screen.len()
+            );
+            eprintln!(
+                "  Camera: {}x{} ({} bytes)",
+                camera_width,
+                camera_height,
+                camera.len()
+            );
+            eprintln!("  Position: {:?}, Size: {:?}", position, size);
+        }
+
         if screen_width == 0
             || screen_height == 0
             || camera_width == 0
@@ -23,6 +46,21 @@ impl FrameCompositor {
             || screen.len() < (screen_width as usize * screen_height as usize * 4)
             || camera.len() < (camera_width as usize * camera_height as usize * 4)
         {
+            eprintln!("RecordFlow: Compositor error - invalid dimensions!");
+            eprintln!(
+                "  Screen: {}x{} (expected {} bytes, got {})",
+                screen_width,
+                screen_height,
+                screen_width as usize * screen_height as usize * 4,
+                screen.len()
+            );
+            eprintln!(
+                "  Camera: {}x{} (expected {} bytes, got {})",
+                camera_width,
+                camera_height,
+                camera_width as usize * camera_height as usize * 4,
+                camera.len()
+            );
             return Err(RecorderError::invalid_settings("Invalid frame dimensions"));
         }
 
@@ -33,7 +71,8 @@ impl FrameCompositor {
         };
 
         let target_w = ((screen_width as u64 * pct as u64) / 100).max(1) as u32;
-        let target_h = ((target_w as u64 * camera_height as u64) / camera_width as u64).max(1) as u32;
+        let target_h =
+            ((target_w as u64 * camera_height as u64) / camera_width as u64).max(1) as u32;
 
         let target_h = target_h.min(screen_height);
         let target_w = target_w.min(screen_width);
@@ -54,6 +93,14 @@ impl FrameCompositor {
         }
         if y0 + target_h > screen_height {
             y0 = 0;
+        }
+
+        // Log overlay position on first frame
+        if count == 0 {
+            eprintln!(
+                "RecordFlow: Camera overlay target: {}x{} at ({}, {})",
+                target_w, target_h, x0, y0
+            );
         }
 
         // Nearest-neighbor resize + overlay (no alpha blending; simple overwrite).

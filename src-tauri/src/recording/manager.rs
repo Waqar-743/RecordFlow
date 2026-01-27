@@ -164,21 +164,33 @@ impl RecordingManager {
                 };
 
                 let fps = settings.fps.max(1);
+                
+                eprintln!("RecordFlow: Starting recording with resolution {}x{} @ {}fps", w, h, fps);
+                eprintln!("RecordFlow: Output path: {}", output_path_for_thread);
 
                 let mic = if settings.mic_enabled {
+                    eprintln!("RecordFlow: Initializing microphone: {:?}", settings.microphone_device);
                     match MicrophoneCapture::new(Some(settings.microphone_device.as_str())) {
-                        Ok(m) => Some(m),
+                        Ok(m) => {
+                            eprintln!("RecordFlow: Microphone initialized ({}Hz, {} channels)", m.sample_rate(), m.channels());
+                            Some(m)
+                        },
                         Err(e) => {
                             eprintln!("RecordFlow: microphone init failed, continuing without mic: {e}");
                             None
                         }
                     }
                 } else {
+                    eprintln!("RecordFlow: Microphone disabled");
                     None
                 };
                 let audio_cfg = mic.as_ref().map(|m| (m.sample_rate(), m.channels()));
 
+                eprintln!("RecordFlow: Initializing screen capturer for display {}", settings.selected_display);
                 let mut capturer = ScreenCapturer::new(settings.selected_display, w, h)?;
+                eprintln!("RecordFlow: Screen capturer initialized successfully");
+                
+                eprintln!("RecordFlow: Initializing video encoder");
                 let mut encoder = VideoEncoder::new(
                     &output_path_for_thread,
                     w,
@@ -187,25 +199,34 @@ impl RecordingManager {
                     settings.bitrate.max(1),
                     audio_cfg,
                 )?;
+                eprintln!("RecordFlow: Video encoder initialized successfully");
 
                 let mut camera = if settings.camera_enabled {
+                    eprintln!("RecordFlow: Initializing camera: {:?}", settings.selected_camera);
                     match CameraCapturer::new(settings.selected_camera.clone()) {
-                        Ok(c) => Some(c),
+                        Ok(c) => {
+                            eprintln!("RecordFlow: Camera initialized successfully");
+                            Some(c)
+                        },
                         Err(e) => {
                             eprintln!("RecordFlow: camera init failed, continuing without camera: {e}");
                             None
                         }
                     }
                 } else {
+                    eprintln!("RecordFlow: Camera disabled");
                     None
                 };
 
+                eprintln!("RecordFlow: All components initialized, starting capture loop");
                 let _ = ready_tx.send(Ok(()));
 
                 let frame_time = Duration::from_secs_f64(1.0 / fps as f64);
                 let started_clock = Instant::now();
                 let mut paused_total = Duration::from_secs(0);
                 let mut pause_started: Option<Instant> = None;
+                let mut frame_count: u64 = 0;
+                
                 while !stop_flag.load(Ordering::SeqCst) {
                     if pause_flag.load(Ordering::SeqCst) {
                         if pause_started.is_none() {
@@ -246,6 +267,12 @@ impl RecordingManager {
                     } else {
                         encoder.encode_frame(&frame.data, elapsed_recording)?;
                     }
+                    
+                    frame_count += 1;
+                    // Log progress every 30 frames (once per second at 30fps)
+                    if frame_count % 30 == 0 {
+                        eprintln!("RecordFlow: Encoded {} frames ({:.1}s)", frame_count, elapsed_recording.as_secs_f64());
+                    }
 
                     let elapsed = tick.elapsed();
                     if elapsed < frame_time {
@@ -253,11 +280,14 @@ impl RecordingManager {
                     }
                 }
 
+                eprintln!("RecordFlow: Stopping capture, encoded {} total frames", frame_count);
                 capturer.stop();
                 if let Some(cam) = camera.as_mut() {
                     cam.stop();
                 }
+                eprintln!("RecordFlow: Finalizing video encoder...");
                 encoder.finalize()?;
+                eprintln!("RecordFlow: Recording completed successfully");
                 Ok(())
             })();
 

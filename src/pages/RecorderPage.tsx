@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AudioSettings } from "../components/AudioSettings";
 import { CameraSettings } from "../components/CameraSettings";
 import { DisplaySelector } from "../components/DisplaySelector";
-import { RecordingControls } from "../components/RecordingControls";
-import { RecordingTimer } from "../components/RecordingTimer";
 import { VideoSettings } from "../components/VideoSettings";
+import { Sidebar } from "../components/Sidebar";
 import { useRecording } from "../hooks/useRecording";
 import { useSettings } from "../hooks/useSettings";
 import { useTimerHistory } from "../hooks/useTimerHistory";
@@ -41,27 +40,27 @@ export function RecorderPage() {
 
   if (settingsLoading) {
     return (
-      <main className="rf-app">
-        <div className="rf-header">
-          <div className="rf-title">RecordFlow</div>
-          <div className="rf-subtitle">Loading…</div>
+      <div className="flex min-h-screen bg-gray-100 text-gray-800">
+        <div className="w-80 bg-white border-r border-gray-200 p-8 flex flex-col shadow-sm shrink-0">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">RecordFlow</h1>
+          <p className="text-sm text-gray-500 mt-1">Loading...</p>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (settingsError && !settings) {
     return (
-      <main className="rf-app">
-        <div className="rf-header">
-          <div className="rf-title">RecordFlow</div>
-          <div className="rf-subtitle">Error</div>
+      <div className="flex min-h-screen bg-gray-100 text-gray-800">
+        <div className="w-80 bg-white border-r border-gray-200 p-8 flex flex-col shadow-sm shrink-0">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">RecordFlow</h1>
+          <p className="text-sm text-gray-500 mt-1">Error</p>
+          <div className="mt-4 p-4 bg-red-50 rounded-lg text-red-600 text-sm">
+            <p>Failed to load settings. Is the Tauri backend running?</p>
+            <pre className="mt-2 text-xs whitespace-pre-wrap">{settingsError}</pre>
+          </div>
         </div>
-        <div className="rf-error" style={{ padding: "2rem", color: "red" }}>
-          <p>Failed to load settings. Is the Tauri backend running?</p>
-          <pre>{settingsError}</pre>
-        </div>
-      </main>
+      </div>
     );
   }
 
@@ -125,155 +124,73 @@ export function RecorderPage() {
   };
 
   return (
-    <main className="rf-app">
-      <div className="rf-header">
-        <div className="rf-title">RecordFlow</div>
-        <div className="rf-subtitle">Screen + Camera recording (Windows)</div>
+    <div className="flex min-h-screen bg-gray-100 text-gray-800">
+      <Sidebar
+        isRecording={recording.status.is_recording}
+        isPaused={recording.status.is_paused}
+        elapsedSeconds={recording.status.elapsed_seconds}
+        lastRecording={lastInfo}
+        history={history.sessions}
+        onStart={start}
+        onStop={recording.stop}
+        onPause={recording.pause}
+        onResume={recording.resume}
+        loading={recording.loading}
+        error={!canStart ? "Enable at least one input (screen/camera/audio)" : recording.error}
+        canStart={canStart}
+        onClearHistory={history.clear}
+        onRemoveSession={history.remove}
+        historyLoading={history.loading}
+        historyError={history.error}
+        fileError={fileError}
+      />
+      
+      <div className="flex-1 p-8 overflow-y-auto max-w-5xl mx-auto space-y-6">
+        {settingsError && (
+          <div className="p-4 bg-red-50 rounded-lg text-red-600 text-sm">
+            {settingsError}
+          </div>
+        )}
+        
+        <VideoSettings
+          selectedResolution={settings.resolution}
+          onResolutionChange={onResolutionChange}
+        />
+        
+        <DisplaySelector
+          selectedDisplay={settings.selected_display}
+          onDisplayChange={onDisplayChange}
+          screenEnabled={settings.screen_enabled}
+          onScreenToggle={onScreenToggle}
+        />
+        
+        <CameraSettings
+          cameraEnabled={settings.camera_enabled}
+          onToggle={onCameraToggle}
+          selectedCamera={settings.selected_camera ?? ""}
+          onCameraChange={onCameraChange}
+          selectedPosition={settings.camera_position}
+          onPositionChange={onPositionChange}
+          selectedSize={settings.camera_size}
+          onSizeChange={onSizeChange}
+          isRecording={recording.status.is_recording}
+        />
+        
+        <AudioSettings
+          micEnabled={settings.mic_enabled}
+          onMicToggle={onMicToggle}
+          selectedMic={settings.microphone_device}
+          onMicChange={onMicChange}
+          micVolume={settings.mic_volume}
+          onMicVolume={onMicVolume}
+          systemAudioEnabled={settings.system_audio_enabled}
+          onSystemAudioToggle={onSystemToggle}
+          selectedSystemAudio={settings.system_audio_device}
+          onSystemAudioChange={onSystemChange}
+          systemAudioVolume={settings.system_audio_volume}
+          onSystemAudioVolume={onSystemVolume}
+        />
       </div>
-
-      {settingsError ? <div className="rf-error">{settingsError}</div> : null}
-
-      <div className="rf-layout">
-        <div className="rf-left">
-          <VideoSettings
-            selectedResolution={settings.resolution}
-            onResolutionChange={onResolutionChange}
-          />
-          <DisplaySelector
-            selectedDisplay={settings.selected_display}
-            onDisplayChange={onDisplayChange}
-            screenEnabled={settings.screen_enabled}
-            onScreenToggle={onScreenToggle}
-          />
-          <CameraSettings
-            cameraEnabled={settings.camera_enabled}
-            onToggle={onCameraToggle}
-            selectedCamera={settings.selected_camera ?? ""}
-            onCameraChange={onCameraChange}
-            selectedPosition={settings.camera_position}
-            onPositionChange={onPositionChange}
-            selectedSize={settings.camera_size}
-            onSizeChange={onSizeChange}
-          />
-          <AudioSettings
-            micEnabled={settings.mic_enabled}
-            onMicToggle={onMicToggle}
-            selectedMic={settings.microphone_device}
-            onMicChange={onMicChange}
-            micVolume={settings.mic_volume}
-            onMicVolume={onMicVolume}
-            systemAudioEnabled={settings.system_audio_enabled}
-            onSystemAudioToggle={onSystemToggle}
-            selectedSystemAudio={settings.system_audio_device}
-            onSystemAudioChange={onSystemChange}
-            systemAudioVolume={settings.system_audio_volume}
-            onSystemAudioVolume={onSystemVolume}
-          />
-        </div>
-
-        <div className="rf-right">
-          <section className="rf-card">
-            <div className="rf-card-title">Timer</div>
-            <RecordingTimer
-              elapsedSeconds={recording.status.elapsed_seconds}
-              isRecording={recording.status.is_recording}
-            />
-          </section>
-
-          <RecordingControls
-            isRecording={recording.status.is_recording}
-            isPaused={recording.status.is_paused}
-            onStart={start}
-            onStop={recording.stop}
-            onPause={recording.pause}
-            onResume={recording.resume}
-            loading={recording.loading}
-            error={!canStart ? "Enable at least one input (screen/camera/audio)" : recording.error}
-          />
-
-          <section className="rf-card">
-            <div className="rf-card-title">Last Recording</div>
-            {lastInfo ? (
-              <>
-                <div className="rf-kv">
-                  <div className="rf-k">File</div>
-                  <div className="rf-v">{lastInfo.file_name}</div>
-                </div>
-                <div className="rf-kv">
-                  <div className="rf-k">Size</div>
-                  <div className="rf-v">{Math.round((lastInfo.file_size / (1024 * 1024)) * 10) / 10} MB</div>
-                </div>
-                <div className="rf-kv">
-                  <div className="rf-k">Created</div>
-                  <div className="rf-v">{lastInfo.created_at}</div>
-                </div>
-
-                <div className="rf-row">
-                  <button
-                    className="rf-btn rf-btn-secondary"
-                    type="button"
-                    onClick={() => void tauriService.openRecordingInExplorer(lastInfo.file_path)}
-                  >
-                    Open in Explorer
-                  </button>
-                  <button
-                    className="rf-btn rf-btn-secondary"
-                    type="button"
-                    onClick={() => void tauriService.openRecordingsFolder()}
-                  >
-                    Open Folder
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="rf-hint">No recording yet.</div>
-            )}
-
-            {fileError ? <div className="rf-error">{fileError}</div> : null}
-          </section>
-
-          <section className="rf-card">
-            <div className="rf-card-title">History</div>
-            {history.sessions.length ? (
-              <div className="rf-col" style={{ gap: ".5rem" }}>
-                {history.sessions.slice(0, 10).map((s) => (
-                  <div key={s.id} className="rf-kv">
-                    <div className="rf-k">
-                      {s.status} · {Math.round(s.duration_seconds)}s
-                    </div>
-                    <div className="rf-v" title={s.output_file ?? undefined}>
-                      {s.started_at}
-                    </div>
-                    <button
-                      className="rf-btn rf-btn-secondary"
-                      type="button"
-                      disabled={history.loading}
-                      onClick={() => void history.remove(s.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-
-                <div className="rf-row">
-                  <button
-                    className="rf-btn rf-btn-secondary"
-                    type="button"
-                    disabled={history.loading}
-                    onClick={() => void history.clear()}
-                  >
-                    Clear history
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="rf-hint">No sessions yet.</div>
-            )}
-
-            {history.error ? <div className="rf-error">{history.error}</div> : null}
-          </section>
-        </div>
-      </div>
-    </main>
+    </div>
   );
 }

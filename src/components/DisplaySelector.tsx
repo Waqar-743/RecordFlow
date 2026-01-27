@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { tauriService } from "../services/tauri.service";
 import type { DisplayInfo } from "../types";
-import { SelectDropdown } from "./SelectDropdown";
+import { SectionWrapper } from "./SectionWrapper";
 
 type Props = {
   onDisplayChange: (displayIndex: number) => void;
@@ -52,31 +52,44 @@ export function DisplaySelector({
   );
 
   return (
-    <section className="rf-card">
-      <div className="rf-card-title">Display/Window Selection</div>
-
-      <label className="rf-toggle">
-        <input
-          type="checkbox"
-          checked={screenEnabled}
-          onChange={(e) => onScreenToggle(e.currentTarget.checked)}
-        />
-        <span>Record Screen</span>
-      </label>
-
-      <SelectDropdown
-        label="Select Display"
-        value={options.length === 0 ? "" : String(selectedDisplay)}
-        options={options}
-        disabled={!screenEnabled || loading || options.length === 0}
-        placeholder={loading ? "Loading..." : "Select Display"}
-        onChange={(v) => onDisplayChange(Number(v))}
-      />
-
-      {error ? <div className="rf-error">{error}</div> : null}
-      {!error && !loading && displays.length === 0 ? (
-        <div className="rf-hint">No displays found.</div>
-      ) : null}
-    </section>
+    <SectionWrapper title="Display/Window Selection">
+      <div className="flex items-center gap-6">
+        <label className="flex items-center gap-2 cursor-pointer group shrink-0">
+          <input 
+            type="checkbox" 
+            checked={screenEnabled}
+            onChange={(e) => onScreenToggle(e.target.checked)}
+            className="w-4 h-4 text-blue-600 rounded"
+          />
+          <span className="text-sm font-medium text-gray-800">Record Screen</span>
+        </label>
+        
+        <div className="flex-1 relative">
+          <select 
+            value={options.length === 0 ? "" : String(selectedDisplay)}
+            onChange={(e) => onDisplayChange(Number(e.target.value))}
+            disabled={!screenEnabled || loading || options.length === 0}
+            className="w-full bg-white border border-gray-300 rounded-md py-2 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <option>Loading...</option>
+            ) : options.length === 0 ? (
+              <option>No displays found</option>
+            ) : (
+              options.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))
+            )}
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
+    </SectionWrapper>
   );
 }

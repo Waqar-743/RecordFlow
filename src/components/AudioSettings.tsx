@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { tauriService } from "../services/tauri.service";
 import type { AudioDeviceInfo } from "../types";
-import { SelectDropdown } from "./SelectDropdown";
-import { VolumeSlider } from "./VolumeSlider";
+import { SectionWrapper } from "./SectionWrapper";
 
 type Props = {
   micEnabled: boolean;
@@ -84,9 +83,6 @@ export function AudioSettings({
     [systemDevices],
   );
 
-  const micValue = selectedMic || "";
-  const sysValue = selectedSystemAudio || "";
-
   const runMicTest = async () => {
     setMicTestError(null);
     if (micTestUrl) {
@@ -101,7 +97,6 @@ export function AudioSettings({
 
     setMicTestRecording(true);
     try {
-      // Best-effort: match selected mic by label once permission is granted.
       let devices = await navigator.mediaDevices.enumerateDevices();
       let desired = devices.find(
         (d) => d.kind === "audioinput" && selectedMic && d.label === selectedMic,
@@ -153,79 +148,139 @@ export function AudioSettings({
   };
 
   return (
-    <section className="rf-card">
-      <div className="rf-card-title">Audio</div>
+    <SectionWrapper title="Audio">
+      <div className="space-y-6">
+        <div className="flex items-start gap-12 flex-wrap">
+          <div className="space-y-4 flex-1 min-w-[250px]">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={micEnabled}
+                onChange={(e) => onMicToggle(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <span className="text-sm font-medium text-gray-800">Record Microphone</span>
+            </label>
+            
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-gray-500">Select Microphone</p>
+              <div className="relative">
+                <select 
+                  value={selectedMic || ""}
+                  onChange={(e) => onMicChange(e.target.value)}
+                  disabled={!micEnabled || loading || micOptions.length === 0}
+                  className="w-full bg-white border border-gray-300 rounded-md py-2 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <option>Loading...</option>
+                  ) : micOptions.length === 0 ? (
+                    <option>No microphones found</option>
+                  ) : (
+                    micOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))
+                  )}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                  <svg className="fill-current h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <div className="rf-audio-section">
-        <label className="rf-toggle">
-          <input
-            type="checkbox"
-            checked={micEnabled}
-            onChange={(e) => onMicToggle(e.currentTarget.checked)}
-          />
-          <span>Record Microphone</span>
-        </label>
-
-        <SelectDropdown
-          label="Select Microphone"
-          value={micValue}
-          options={micOptions}
-          disabled={!micEnabled || loading || micOptions.length === 0}
-          placeholder={loading ? "Loading..." : "Select Microphone"}
-          onChange={onMicChange}
-        />
-
-        <VolumeSlider
-          value={Math.round(micVolume * 100)}
-          onChange={(v) => onMicVolume(v / 100)}
-          disabled={!micEnabled}
-        />
-
-        <div className="rf-row" style={{ gap: 10, alignItems: "center" }}>
-          <button
-            type="button"
-            className="rf-btn rf-btn-secondary"
-            onClick={runMicTest}
-            disabled={micTestRecording}
-          >
-            {micTestRecording ? "Testing..." : "Test Microphone (3s)"}
-          </button>
-
-          {micTestUrl ? <audio controls src={micTestUrl} /> : null}
+          <div className="flex-1 space-y-4 min-w-[250px]">
+            <p className="text-xs font-bold text-gray-500">Volume ({Math.round(micVolume * 100)}%)</p>
+            <div className="flex items-center gap-4">
+              <svg className="w-5 h-5 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={Math.round(micVolume * 100)} 
+                onChange={(e) => onMicVolume(parseInt(e.target.value) / 100)}
+                disabled={!micEnabled}
+                className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
+              />
+              <button 
+                onClick={runMicTest}
+                disabled={micTestRecording || !micEnabled}
+                className="bg-gray-100 border border-gray-300 px-3 py-1.5 rounded-md text-xs font-bold text-gray-700 hover:bg-gray-200 shadow-sm transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {micTestRecording ? "Testing..." : "Test Microphone (3s)"}
+              </button>
+            </div>
+            
+            {micTestUrl && (
+              <audio controls src={micTestUrl} className="w-full h-8" />
+            )}
+            
+            {micTestError && <div className="text-sm text-red-600">{micTestError}</div>}
+          </div>
         </div>
 
-        {micTestError ? <div className="rf-error">{micTestError}</div> : null}
+        <div className="flex items-center gap-6 border-t border-gray-100 pt-6 flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer shrink-0">
+            <input 
+              type="checkbox" 
+              checked={systemAudioEnabled}
+              onChange={(e) => onSystemAudioToggle(e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded"
+            />
+            <span className="text-sm font-medium text-gray-800">Record System Audio</span>
+          </label>
+          
+          <div className="flex-1 space-y-1 min-w-[250px]">
+            <p className="text-xs font-bold text-gray-400 uppercase">Select System Audio</p>
+            <div className="relative">
+              <select 
+                value={selectedSystemAudio || ""}
+                onChange={(e) => onSystemAudioChange(e.target.value)}
+                disabled={!systemAudioEnabled || loading || sysOptions.length === 0}
+                className="w-full bg-white border border-gray-300 rounded-md py-2 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <option>Loading...</option>
+                ) : sysOptions.length === 0 ? (
+                  <option>No system audio devices found</option>
+                ) : (
+                  sysOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))
+                )}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                <svg className="fill-current h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs font-bold text-gray-400 uppercase mb-2">Volume ({Math.round(systemAudioVolume * 100)}%)</p>
+            <div className="flex items-center gap-4">
+              <svg className="w-5 h-5 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 010 12.728" />
+              </svg>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={Math.round(systemAudioVolume * 100)} 
+                onChange={(e) => onSystemAudioVolume(parseInt(e.target.value) / 100)}
+                disabled={!systemAudioEnabled}
+                className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
       </div>
-
-      <div className="rf-divider" />
-
-      <div className="rf-audio-section">
-        <label className="rf-toggle">
-          <input
-            type="checkbox"
-            checked={systemAudioEnabled}
-            onChange={(e) => onSystemAudioToggle(e.currentTarget.checked)}
-          />
-          <span>Record System Audio</span>
-        </label>
-
-        <SelectDropdown
-          label="Select System Audio"
-          value={sysValue}
-          options={sysOptions}
-          disabled={!systemAudioEnabled || loading || sysOptions.length === 0}
-          placeholder={loading ? "Loading..." : "Select System Audio"}
-          onChange={onSystemAudioChange}
-        />
-
-        <VolumeSlider
-          value={Math.round(systemAudioVolume * 100)}
-          onChange={(v) => onSystemAudioVolume(v / 100)}
-          disabled={!systemAudioEnabled}
-        />
-      </div>
-
-      {error ? <div className="rf-error">{error}</div> : null}
-    </section>
+      
+      {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
+    </SectionWrapper>
   );
 }
