@@ -11,6 +11,10 @@ on:
         required: true
         default: 'v1.0.0'
 
+# Required permissions for creating releases
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
