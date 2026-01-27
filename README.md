@@ -1,6 +1,21 @@
 # RecordFlow (Windows) — Screen + Camera Recorder
 
+[![Build and Release](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/actions/workflows/release.yml/badge.svg)](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/Waqar-743/Screen-and-Camera-Recording-app?label=Download)](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest)
+
 RecordFlow is a lightweight Windows desktop app (Tauri + React + Rust) for recording your screen with an optional camera overlay and microphone audio, saved as an `mp4`.
+
+## Download
+
+### Quick Download (Windows)
+
+[![Download RecordFlow](https://img.shields.io/badge/Download-RecordFlow%20for%20Windows-blue?style=for-the-badge&logo=windows)](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest)
+
+**Direct Download Links:**
+- [Download .exe Installer (Recommended)](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest/download/RecordFlow_1.0.0_x64-setup.exe)
+- [Download .msi Installer](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest/download/RecordFlow_1.0.0_x64_en-US.msi)
+
+> **Note:** If the direct links don't work, visit the [Releases Page](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest) to download manually.
 
 ## System Requirements
 
@@ -16,15 +31,6 @@ RecordFlow uses the **Windows Graphics Capture API** for efficient, low-latency 
 ### Optional Hardware
 - **Webcam**: For camera overlay recording (any UVC-compatible webcam)
 - **Microphone**: For audio recording (built-in or external)
-
-## Download (Windows)
-
-Download the latest Windows installer from GitHub Releases:
-
-- Windows (recommended): [Download tauri-02_0.1.0_x64-setup.exe](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest/download/tauri-02_0.1.0_x64-setup.exe)
-- Windows (MSI): [Download tauri-02_0.1.0_x64_en-US.msi](https://github.com/Waqar-743/Screen-and-Camera-Recording-app/releases/latest/download/tauri-02_0.1.0_x64_en-US.msi)
-
-Note: These are **direct download** links and will work once you upload the installers to the GitHub Release as assets.
 
 ## Features
 
