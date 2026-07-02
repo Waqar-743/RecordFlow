@@ -186,8 +186,11 @@ impl RecordingManager {
                 };
                 let audio_cfg = mic.as_ref().map(|m| (m.sample_rate(), m.channels()));
 
-                eprintln!("RecordFlow: Initializing screen capturer for display {}", settings.selected_display);
-                let mut capturer = ScreenCapturer::new(settings.selected_display, w, h)?;
+                eprintln!(
+                    "RecordFlow: Initializing screen capturer for display {} with region {:?}",
+                    settings.selected_display, settings.capture_region
+                );
+                let mut capturer = ScreenCapturer::new(settings.selected_display, w, h, settings.capture_region.clone())?;
                 eprintln!("RecordFlow: Screen capturer initialized successfully");
                 
                 eprintln!("RecordFlow: Initializing video encoder");
@@ -267,7 +270,7 @@ impl RecordingManager {
                     } else {
                         encoder.encode_frame(&frame.data, elapsed_recording)?;
                     }
-                    
+
                     frame_count += 1;
                     // Log progress every 30 frames (once per second at 30fps)
                     if frame_count % 30 == 0 {

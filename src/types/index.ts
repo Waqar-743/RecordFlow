@@ -49,6 +49,13 @@ export interface RecordingInfo {
   created_at: string;
 }
 
+export interface CaptureRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export type Resolution = "720p" | "1080p";
 export type CameraPosition = "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight";
 export type CameraSize = "Small" | "Medium" | "Large";
@@ -60,6 +67,7 @@ export interface RecordingSettings {
   bitrate: number;
   selected_display: number;
   selected_window: string | null;
+  capture_region: CaptureRegion | null;
   selected_camera: string | null;
   camera_enabled: boolean;
   camera_position: CameraPosition;

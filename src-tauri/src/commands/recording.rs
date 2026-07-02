@@ -3,8 +3,57 @@ use crate::recording::manager::RecordingManager;
 use crate::recording::status::RecordingStatus;
 use crate::utils::history::save_history;
 use std::sync::Arc;
-use tauri::Emitter;
-use tauri::State;
+use std::time::Duration;
+use tauri::{Emitter, Manager, State, WebviewWindow};
+
+fn main_window(app: &tauri::AppHandle) -> Result<WebviewWindow, RecorderError> {
+    app.get_webview_window("main")
+        .ok_or_else(|| RecorderError::encoding_failed("Main window was not found"))
+}
+
+#[cfg(target_os = "windows")]
+fn set_window_capture_excluded(
+    window: &WebviewWindow,
+    excluded: bool,
+) -> Result<(), RecorderError> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    };
+
+    let hwnd = window.hwnd().map_err(|e| {
+        RecorderError::encoding_failed(format!("Unable to read window handle: {e}"))
+    })?;
+    let affinity = if excluded {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WDA_NONE
+    };
+    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(|e| {
+        RecorderError::encoding_failed(format!(
+            "Unable to {} RecordFlow from screen capture: {}",
+            if excluded { "exclude" } else { "restore" },
+            e
+        ))
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_window_capture_excluded(
+    _window: &WebviewWindow,
+    _excluded: bool,
+) -> Result<(), RecorderError> {
+    Ok(())
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    match main_window(app) {
+        Ok(window) => {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        Err(err) => eprintln!("RecordFlow: failed to show main window: {err}"),
+    }
+}
 
 /// Begin recording with the current settings.
 #[tauri::command]
@@ -12,7 +61,23 @@ pub async fn start_recording(
     app: tauri::AppHandle,
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
-    let path = state.inner().start_recording().await?;
+    let window = main_window(&app)?;
+    set_window_capture_excluded(&window, true)?;
+    let _ = window.hide();
+    std::thread::sleep(Duration::from_millis(350));
+
+    let path = match state.inner().start_recording().await {
+        Ok(path) => path,
+        Err(err) => {
+            let _ = set_window_capture_excluded(&window, false);
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Err(err);
+        }
+    };
+
+    let _ = window.show();
+    let _ = window.set_focus();
     state.inner().start_tick_emitter(app);
     Ok(path)
 }
@@ -23,7 +88,12 @@ pub async fn stop_recording(
     app: tauri::AppHandle,
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<RecordingStatus, RecorderError> {
-    let _path = state.inner().stop_recording().await?;
+    let stop_result = state.inner().stop_recording().await;
+    show_main_window(&app);
+    if let Ok(window) = main_window(&app) {
+        let _ = set_window_capture_excluded(&window, false);
+    }
+    let _path = stop_result?;
 
     if let Some(session) = state.inner().take_last_session() {
         state.inner().state.push_history(session);

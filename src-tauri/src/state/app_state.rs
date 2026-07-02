@@ -30,6 +30,14 @@ pub enum CameraSize {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureRegion {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecordingSettings {
     pub screen_enabled: bool,
@@ -38,6 +46,7 @@ pub struct RecordingSettings {
     pub bitrate: u32,
     pub selected_display: u32,
     pub selected_window: Option<String>,
+    pub capture_region: Option<CaptureRegion>,
     pub selected_camera: Option<String>,
     pub camera_enabled: bool,
     pub camera_position: CameraPosition,
@@ -59,6 +68,7 @@ impl Default for RecordingSettings {
             bitrate: 5000,
             selected_display: 0,
             selected_window: None,
+            capture_region: None,
             selected_camera: None,
             camera_enabled: false,
             camera_position: CameraPosition::BottomRight,
