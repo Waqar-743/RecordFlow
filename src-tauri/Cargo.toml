@@ -1,6 +1,6 @@
 [package]
 name = "recordflow"
-version = "1.0.0"
+version = "1.0.1"
 description = "RecordFlow - Screen and Camera Recording App"
 authors = ["Waqar"]
 edition = "2021"
@@ -45,4 +45,3 @@ nokhwa = { version = "0.10.10", default-features = false, features = ["input-nat
 
 [patch.crates-io]
 windows-capture = { path = "crates/windows-capture" }
-

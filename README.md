@@ -26,8 +26,8 @@ Get the latest Windows build from the [RecordFlow releases page](https://github.
 
 Direct release assets:
 
-- [Download EXE installer](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.0.0_x64-setup.exe)
-- [Download MSI installer](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.0.0_x64_en-US.msi)
+- [Download EXE installer](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.0.1_x64-setup.exe)
+- [Download MSI installer](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.0.1_x64_en-US.msi)
 
 ## Highlights
 

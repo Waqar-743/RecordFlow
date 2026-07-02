@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauriApp } from "../services/tauri.service";
@@ -18,11 +18,13 @@ type Props = {
   display: DisplayInfo | null;
   captureRegion: CaptureRegion | null;
   disabled?: boolean;
+  selectionRequestId?: number;
   onCaptureRegionChange: (region: CaptureRegion | null) => Promise<void>;
+  onSelectionComplete?: () => Promise<void>;
 };
 
 const MIN_SELECTION_SIZE = 24;
-const RESTORED_WINDOW_SIZE = { width: 1100, height: 750 };
+const RESTORED_WINDOW_SIZE = { width: 900, height: 620 };
 
 function normalizeRect(start: Point, end: Point): SelectionRect {
   const x = Math.min(start.x, end.x);
@@ -68,25 +70,30 @@ export function ScreenRegionPicker({
   display,
   captureRegion,
   disabled = false,
+  selectionRequestId = 0,
   onCaptureRegionChange,
+  onSelectionComplete,
 }: Props) {
   const [isPicking, setIsPicking] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [startAfterSelection, setStartAfterSelection] = useState(false);
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragEnd, setDragEnd] = useState<Point | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const handledSelectionRequest = useRef(selectionRequestId);
 
   const activeRect = useMemo(() => {
     if (!dragStart || !dragEnd) return null;
     return normalizeRect(dragStart, dragEnd);
   }, [dragEnd, dragStart]);
 
-  const beginPicking = async () => {
+  const beginPicking = async (shouldStartAfterSelection = false) => {
     if (!display || disabled) return;
 
     setError(null);
     setIsPreparing(true);
     setIsPicking(true);
+    setStartAfterSelection(shouldStartAfterSelection);
     setDragStart(null);
     setDragEnd(null);
 
@@ -102,6 +109,7 @@ export function ScreenRegionPicker({
 
   const closePicker = async () => {
     setIsPicking(false);
+    setStartAfterSelection(false);
     setDragStart(null);
     setDragEnd(null);
 
@@ -118,7 +126,7 @@ export function ScreenRegionPicker({
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || isPreparing) return;
+    if ((event.button !== 0 && event.button !== 2) || isPreparing) return;
 
     const next = { x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -157,10 +165,20 @@ export function ScreenRegionPicker({
     try {
       await onCaptureRegionChange(nextRegion);
       await closePicker();
+      if (startAfterSelection) {
+        await onSelectionComplete?.();
+      }
     } catch (e) {
       setError(String(e));
     }
   };
+
+  useEffect(() => {
+    if (!selectionRequestId || selectionRequestId === handledSelectionRequest.current) return;
+
+    handledSelectionRequest.current = selectionRequestId;
+    void beginPicking(true);
+  }, [selectionRequestId, display, disabled]);
 
   useEffect(() => {
     if (!isPicking) return;
@@ -196,7 +214,7 @@ export function ScreenRegionPicker({
             <button
               className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={disabled || !display}
-              onClick={() => void beginPicking()}
+              onClick={() => void beginPicking(false)}
               type="button"
             >
               Select area
@@ -213,9 +231,10 @@ export function ScreenRegionPicker({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={(event) => void onPointerUp(event)}
+          onContextMenu={(event) => event.preventDefault()}
         >
           <div className="rf-region-picker-hint">
-            {isPreparing ? "Preparing selection..." : "Drag to select. Press Esc to cancel."}
+            {isPreparing ? "Preparing selection..." : "Right-drag to select. Press Esc to cancel."}
           </div>
 
           {activeRect ? (

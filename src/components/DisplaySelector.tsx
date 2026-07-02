@@ -10,7 +10,9 @@ type Props = {
   screenEnabled: boolean;
   onScreenToggle: (enabled: boolean) => void;
   captureRegion: CaptureRegion | null;
+  selectionRequestId?: number;
   onCaptureRegionChange: (region: CaptureRegion | null) => Promise<void>;
+  onSelectionComplete?: () => Promise<void>;
 };
 
 export function DisplaySelector({
@@ -19,7 +21,9 @@ export function DisplaySelector({
   screenEnabled,
   onScreenToggle,
   captureRegion,
+  selectionRequestId,
   onCaptureRegionChange,
+  onSelectionComplete,
 }: Props) {
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -103,7 +107,9 @@ export function DisplaySelector({
         display={activeDisplay}
         captureRegion={captureRegion}
         disabled={!screenEnabled || loading || options.length === 0}
+        selectionRequestId={selectionRequestId}
         onCaptureRegionChange={onCaptureRegionChange}
+        onSelectionComplete={onSelectionComplete}
       />
       
       {error && <div className="mt-2 text-sm text-red-600">{error}</div>}

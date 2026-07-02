@@ -16,6 +16,7 @@ export function RecorderPage() {
   const history = useTimerHistory();
   const [lastInfo, setLastInfo] = useState<RecordingInfo | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [selectionRequestId, setSelectionRequestId] = useState(0);
 
   useEffect(() => {
     if (!recording.status.is_recording && recording.status.output_file) {
@@ -124,6 +125,15 @@ export function RecorderPage() {
 
   const start = async () => {
     if (!canStart) return;
+    if (settings.screen_enabled) {
+      setSelectionRequestId((value) => value + 1);
+      return;
+    }
+
+    await recording.start();
+  };
+
+  const startAfterRegionSelection = async () => {
     await recording.start();
   };
 
@@ -167,7 +177,9 @@ export function RecorderPage() {
           screenEnabled={settings.screen_enabled}
           onScreenToggle={onScreenToggle}
           captureRegion={settings.capture_region}
+          selectionRequestId={selectionRequestId}
           onCaptureRegionChange={onCaptureRegionChange}
+          onSelectionComplete={startAfterRegionSelection}
         />
         
         <CameraSettings

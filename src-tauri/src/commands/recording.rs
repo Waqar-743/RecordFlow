@@ -17,24 +17,34 @@ fn set_window_capture_excluded(
     excluded: bool,
 ) -> Result<(), RecorderError> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_MONITOR, WDA_NONE,
     };
 
     let hwnd = window.hwnd().map_err(|e| {
         RecorderError::encoding_failed(format!("Unable to read window handle: {e}"))
     })?;
-    let affinity = if excluded {
-        WDA_EXCLUDEFROMCAPTURE
-    } else {
-        WDA_NONE
-    };
-    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(|e| {
-        RecorderError::encoding_failed(format!(
-            "Unable to {} RecordFlow from screen capture: {}",
-            if excluded { "exclude" } else { "restore" },
-            e
-        ))
-    })
+    if !excluded {
+        return unsafe { SetWindowDisplayAffinity(hwnd, WDA_NONE) }.map_err(|e| {
+            RecorderError::encoding_failed(format!(
+                "Unable to restore RecordFlow screen capture visibility: {}",
+                e
+            ))
+        });
+    }
+
+    unsafe { SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) }
+        .or_else(|exclude_err| {
+            eprintln!(
+                "RecordFlow: WDA_EXCLUDEFROMCAPTURE failed, falling back to WDA_MONITOR: {exclude_err}"
+            );
+            unsafe { SetWindowDisplayAffinity(hwnd, WDA_MONITOR) }
+        })
+        .map_err(|e| {
+            RecorderError::encoding_failed(format!(
+                "Unable to exclude RecordFlow from screen capture: {}",
+                e
+            ))
+        })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -62,7 +72,15 @@ pub async fn start_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
     let window = main_window(&app)?;
-    set_window_capture_excluded(&window, true)?;
+    let window_capture_excluded = match set_window_capture_excluded(&window, true) {
+        Ok(()) => true,
+        Err(err) => {
+            eprintln!(
+                "RecordFlow: capture exclusion unavailable; keeping app hidden during recording: {err}"
+            );
+            false
+        }
+    };
     let _ = window.hide();
     std::thread::sleep(Duration::from_millis(350));
 
@@ -76,8 +94,10 @@ pub async fn start_recording(
         }
     };
 
-    let _ = window.show();
-    let _ = window.set_focus();
+    if window_capture_excluded {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
     state.inner().start_tick_emitter(app);
     Ok(path)
 }
