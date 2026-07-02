@@ -8,7 +8,7 @@ import { useRecording } from "../hooks/useRecording";
 import { useSettings } from "../hooks/useSettings";
 import { useTimerHistory } from "../hooks/useTimerHistory";
 import { tauriService } from "../services/tauri.service";
-import type { CameraPosition, CameraSize, RecordingInfo, Resolution } from "../types";
+import type { CameraPosition, CameraSize, CaptureRegion, RecordingInfo, Resolution } from "../types";
 
 export function RecorderPage() {
   const { settings, loading: settingsLoading, error: settingsError, updateSettings } = useSettings();
@@ -75,7 +75,11 @@ export function RecorderPage() {
   };
 
   const onDisplayChange = async (idx: number) => {
-    await updateSettings({ selected_display: idx });
+    await updateSettings({ selected_display: idx, capture_region: null });
+  };
+
+  const onCaptureRegionChange = async (region: CaptureRegion | null) => {
+    await updateSettings({ capture_region: region });
   };
 
   const onCameraToggle = async (enabled: boolean) => {
@@ -162,6 +166,8 @@ export function RecorderPage() {
           onDisplayChange={onDisplayChange}
           screenEnabled={settings.screen_enabled}
           onScreenToggle={onScreenToggle}
+          captureRegion={settings.capture_region}
+          onCaptureRegionChange={onCaptureRegionChange}
         />
         
         <CameraSettings

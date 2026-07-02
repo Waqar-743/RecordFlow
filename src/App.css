@@ -76,3 +76,50 @@ input[type="checkbox"] {
 .animate-pulse-recording {
   animation: pulse-animation 1s ease-in-out infinite;
 }
+
+.rf-region-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  cursor: crosshair;
+  user-select: none;
+  background:
+    linear-gradient(rgba(17, 24, 39, 0.58), rgba(17, 24, 39, 0.58));
+}
+
+.rf-region-picker-hint {
+  position: fixed;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+  pointer-events: none;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.rf-region-picker-selection {
+  position: fixed;
+  border: 2px solid #60a5fa;
+  background: rgba(96, 165, 250, 0.18);
+  box-shadow: 0 0 0 9999px rgba(17, 24, 39, 0.32);
+  pointer-events: none;
+}
+
+.rf-region-picker-selection span {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+  white-space: nowrap;
+}

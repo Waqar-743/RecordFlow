@@ -20,6 +20,7 @@ let mockSettings: RecordingSettings = {
   bitrate: 5000,
   selected_display: 0,
   selected_window: null,
+  capture_region: null,
   selected_camera: null,
   camera_enabled: false,
   camera_position: "BottomRight",

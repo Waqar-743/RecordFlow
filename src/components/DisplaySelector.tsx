@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { tauriService } from "../services/tauri.service";
-import type { DisplayInfo } from "../types";
+import type { CaptureRegion, DisplayInfo } from "../types";
 import { SectionWrapper } from "./SectionWrapper";
+import { ScreenRegionPicker } from "./ScreenRegionPicker";
 
 type Props = {
   onDisplayChange: (displayIndex: number) => void;
   selectedDisplay: number;
   screenEnabled: boolean;
   onScreenToggle: (enabled: boolean) => void;
+  captureRegion: CaptureRegion | null;
+  onCaptureRegionChange: (region: CaptureRegion | null) => Promise<void>;
 };
 
 export function DisplaySelector({
@@ -15,6 +18,8 @@ export function DisplaySelector({
   selectedDisplay,
   screenEnabled,
   onScreenToggle,
+  captureRegion,
+  onCaptureRegionChange,
 }: Props) {
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -49,6 +54,11 @@ export function DisplaySelector({
         label: `${d.name} - ${d.width}x${d.height}`,
       })),
     [displays],
+  );
+
+  const activeDisplay = useMemo(
+    () => displays.find((display) => display.index === selectedDisplay) ?? displays[0] ?? null,
+    [displays, selectedDisplay],
   );
 
   return (
@@ -88,6 +98,13 @@ export function DisplaySelector({
           </div>
         </div>
       </div>
+
+      <ScreenRegionPicker
+        display={activeDisplay}
+        captureRegion={captureRegion}
+        disabled={!screenEnabled || loading || options.length === 0}
+        onCaptureRegionChange={onCaptureRegionChange}
+      />
       
       {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
     </SectionWrapper>

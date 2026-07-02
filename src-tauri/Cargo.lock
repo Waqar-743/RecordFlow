@@ -3469,6 +3469,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "recordflow"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "cpal",
+ "dirs 5.0.1",
+ "nokhwa",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tokio",
+ "uuid",
+ "windows 0.61.3",
+ "windows-capture",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4253,26 +4273,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
-]
-
-[[package]]
-name = "tauri-02"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "cpal",
- "dirs 5.0.1",
- "nokhwa",
- "parking_lot",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tokio",
- "uuid",
- "windows 0.61.3",
- "windows-capture",
 ]
 
 [[package]]
