@@ -56,9 +56,16 @@ export function Sidebar({
 
   return (
     <div className="w-80 bg-white border-r border-gray-200 p-8 flex flex-col shadow-sm shrink-0 h-screen">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">RecordFlow</h1>
-        <p className="text-sm text-gray-500 mt-1">Screen + Camera recording (Windows)</p>
+      <div className="mb-8 flex items-center gap-3">
+        <img
+          src="/recordflow.png"
+          alt="RecordFlow"
+          className="h-14 w-14 rounded-2xl object-cover shadow-sm"
+        />
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">RecordFlow</h1>
+          <p className="text-sm text-gray-500 mt-1">Screen + Camera recording (Windows)</p>
+        </div>
       </div>
 
       <div className="flex flex-col items-center mb-10">
