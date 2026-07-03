@@ -1,4 +1,5 @@
 use crate::error::RecorderError;
+use crate::recording::frame_overlay;
 use crate::recording::manager::RecordingManager;
 use crate::recording::status::RecordingStatus;
 use crate::utils::history::save_history;
@@ -11,48 +12,16 @@ fn main_window(app: &tauri::AppHandle) -> Result<WebviewWindow, RecorderError> {
         .ok_or_else(|| RecorderError::encoding_failed("Main window was not found"))
 }
 
-#[cfg(target_os = "windows")]
-fn set_window_capture_excluded(
+fn set_window_content_protected(
     window: &WebviewWindow,
-    excluded: bool,
+    protected: bool,
 ) -> Result<(), RecorderError> {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_MONITOR, WDA_NONE,
-    };
-
-    let hwnd = window.hwnd().map_err(|e| {
-        RecorderError::encoding_failed(format!("Unable to read window handle: {e}"))
-    })?;
-    if !excluded {
-        return unsafe { SetWindowDisplayAffinity(hwnd, WDA_NONE) }.map_err(|e| {
-            RecorderError::encoding_failed(format!(
-                "Unable to restore RecordFlow screen capture visibility: {}",
-                e
-            ))
-        });
-    }
-
-    unsafe { SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) }
-        .or_else(|exclude_err| {
-            eprintln!(
-                "RecordFlow: WDA_EXCLUDEFROMCAPTURE failed, falling back to WDA_MONITOR: {exclude_err}"
-            );
-            unsafe { SetWindowDisplayAffinity(hwnd, WDA_MONITOR) }
-        })
-        .map_err(|e| {
-            RecorderError::encoding_failed(format!(
-                "Unable to exclude RecordFlow from screen capture: {}",
-                e
-            ))
-        })
-}
-
-#[cfg(not(target_os = "windows"))]
-fn set_window_capture_excluded(
-    _window: &WebviewWindow,
-    _excluded: bool,
-) -> Result<(), RecorderError> {
-    Ok(())
+    window.set_content_protected(protected).map_err(|e| {
+        RecorderError::encoding_failed(format!(
+            "Unable to {} RecordFlow screen-capture protection: {e}",
+            if protected { "enable" } else { "disable" }
+        ))
+    })
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -72,31 +41,28 @@ pub async fn start_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
     let window = main_window(&app)?;
-    let window_capture_excluded = match set_window_capture_excluded(&window, true) {
-        Ok(()) => true,
-        Err(err) => {
-            eprintln!(
-                "RecordFlow: capture exclusion unavailable; keeping app hidden during recording: {err}"
-            );
-            false
-        }
-    };
-    let _ = window.hide();
-    std::thread::sleep(Duration::from_millis(350));
+    set_window_content_protected(&window, true)?;
+    let _ = window.show();
+    std::thread::sleep(Duration::from_millis(150));
 
     let path = match state.inner().start_recording().await {
         Ok(path) => path,
         Err(err) => {
-            let _ = set_window_capture_excluded(&window, false);
+            frame_overlay::hide_recording_frame();
+            let _ = set_window_content_protected(&window, true);
             let _ = window.show();
             let _ = window.set_focus();
             return Err(err);
         }
     };
 
-    if window_capture_excluded {
-        let _ = window.show();
-        let _ = window.set_focus();
+    let _ = window.show();
+    let _ = window.set_focus();
+    let settings = state.inner().state.get_settings();
+    if let Err(err) =
+        frame_overlay::show_recording_frame(settings.selected_display, settings.capture_region.as_ref())
+    {
+        eprintln!("RecordFlow: recording frame overlay failed: {err}");
     }
     state.inner().start_tick_emitter(app);
     Ok(path)
@@ -109,9 +75,10 @@ pub async fn stop_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<RecordingStatus, RecorderError> {
     let stop_result = state.inner().stop_recording().await;
+    frame_overlay::hide_recording_frame();
     show_main_window(&app);
     if let Ok(window) = main_window(&app) {
-        let _ = set_window_capture_excluded(&window, false);
+        let _ = set_window_content_protected(&window, true);
     }
     let _path = stop_result?;
 

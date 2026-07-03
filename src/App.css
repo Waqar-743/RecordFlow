@@ -5,6 +5,12 @@
   padding: 0;
 }
 
+html,
+body,
+#root {
+  background: transparent;
+}
+
 /* Scrollbar styling */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -87,6 +93,11 @@ input[type="checkbox"] {
     linear-gradient(rgba(17, 24, 39, 0.58), rgba(17, 24, 39, 0.58));
 }
 
+.rf-region-picker-window {
+  width: 100vw;
+  height: 100vh;
+}
+
 .rf-region-picker-hint {
   position: fixed;
   left: 50%;
@@ -103,10 +114,33 @@ input[type="checkbox"] {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
+.rf-region-picker-cancel,
+.rf-region-picker-error {
+  position: fixed;
+  right: 24px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.rf-region-picker-cancel {
+  top: 24px;
+  cursor: pointer;
+}
+
+.rf-region-picker-error {
+  top: 72px;
+  background: rgba(185, 28, 28, 0.94);
+}
+
 .rf-region-picker-selection {
   position: fixed;
-  border: 2px solid #60a5fa;
-  background: rgba(96, 165, 250, 0.18);
+  border: 3px solid #38bdf8;
+  background: rgba(96, 165, 250, 0.1);
   box-shadow: 0 0 0 9999px rgba(17, 24, 39, 0.32);
   pointer-events: none;
 }

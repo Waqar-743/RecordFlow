@@ -1,6 +1,7 @@
 pub mod audio_capturer;
 pub mod camera_capturer;
 pub mod compositor;
+pub mod frame_overlay;
 pub mod manager;
 pub mod screen_capturer;
 pub mod status;
