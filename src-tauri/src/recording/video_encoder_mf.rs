@@ -82,7 +82,8 @@ impl VideoEncoder {
         }
         let attrs = attrs
             .ok_or_else(|| RecorderError::encoding_failed("MFCreateAttributes returned null"))?;
-        let _ = unsafe { attrs.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1) };
+        // Software transforms are more tolerant of custom region dimensions.
+        let _ = unsafe { attrs.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0) };
 
         let writer = unsafe {
             MFCreateSinkWriterFromURL(url, None, Some(&attrs))

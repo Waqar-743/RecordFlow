@@ -2,9 +2,25 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "region-picker"
+  ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:webview:allow-set-webview-focus",
+    "core:webview:allow-webview-close",
+    "core:window:allow-center",
+    "core:window:allow-close",
+    "core:window:allow-create",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-content-protected",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-show",
     "opener:default",
     "opener:default"
   ]

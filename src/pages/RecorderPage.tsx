@@ -1,21 +1,45 @@
 import { useEffect, useMemo, useState } from "react";
 import { AudioSettings } from "../components/AudioSettings";
 import { CameraSettings } from "../components/CameraSettings";
-import { DisplaySelector } from "../components/DisplaySelector";
+import { ScreenRegionPicker } from "../components/ScreenRegionPicker";
 import { VideoSettings } from "../components/VideoSettings";
 import { Sidebar } from "../components/Sidebar";
 import { useRecording } from "../hooks/useRecording";
 import { useSettings } from "../hooks/useSettings";
 import { useTimerHistory } from "../hooks/useTimerHistory";
 import { tauriService } from "../services/tauri.service";
-import type { CameraPosition, CameraSize, CaptureRegion, RecordingInfo, Resolution } from "../types";
+import type { CameraPosition, CameraSize, CaptureRegion, DisplayInfo, RecordingInfo, Resolution } from "../types";
 
 export function RecorderPage() {
   const { settings, loading: settingsLoading, error: settingsError, updateSettings } = useSettings();
   const recording = useRecording();
   const history = useTimerHistory();
+  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+  const [displayError, setDisplayError] = useState<string | null>(null);
   const [lastInfo, setLastInfo] = useState<RecordingInfo | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [selectionRequestId, setSelectionRequestId] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const list = await tauriService.getDisplays();
+        if (cancelled) return;
+        setDisplays(list);
+        setDisplayError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setDisplayError(String(e));
+        setDisplays([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!recording.status.is_recording && recording.status.output_file) {
@@ -35,8 +59,13 @@ export function RecorderPage() {
 
   const canStart = useMemo(() => {
     if (!settings) return false;
-    return settings.screen_enabled || settings.camera_enabled || settings.mic_enabled || settings.system_audio_enabled;
-  }, [settings]);
+    return displays.length > 0;
+  }, [displays.length, settings]);
+
+  const activeDisplay = useMemo(() => {
+    if (!settings) return null;
+    return displays.find((display) => display.index === settings.selected_display) ?? displays[0] ?? null;
+  }, [displays, settings]);
 
   if (settingsLoading) {
     return (
@@ -70,16 +99,12 @@ export function RecorderPage() {
     await updateSettings({ resolution: r, fps: 30, bitrate: 5000 });
   };
 
-  const onScreenToggle = async (enabled: boolean) => {
-    await updateSettings({ screen_enabled: enabled });
-  };
-
-  const onDisplayChange = async (idx: number) => {
-    await updateSettings({ selected_display: idx, capture_region: null });
-  };
-
   const onCaptureRegionChange = async (region: CaptureRegion | null) => {
-    await updateSettings({ capture_region: region });
+    await updateSettings({
+      capture_region: region,
+      screen_enabled: true,
+      selected_display: activeDisplay?.index ?? settings.selected_display,
+    });
   };
 
   const onCameraToggle = async (enabled: boolean) => {
@@ -124,7 +149,18 @@ export function RecorderPage() {
 
   const start = async () => {
     if (!canStart) return;
-    await recording.start();
+    setSelectionRequestId((value) => value + 1);
+  };
+
+  const startAfterRegionSelection = async (_region: CaptureRegion | null) => {
+    if (!activeDisplay) return;
+
+    const started = await recording.start();
+    if (!started) return;
+  };
+
+  const stop = async () => {
+    await recording.stop();
   };
 
   return (
@@ -136,11 +172,11 @@ export function RecorderPage() {
         lastRecording={lastInfo}
         history={history.sessions}
         onStart={start}
-        onStop={recording.stop}
+        onStop={stop}
         onPause={recording.pause}
         onResume={recording.resume}
         loading={recording.loading}
-        error={!canStart ? "Enable at least one input (screen/camera/audio)" : recording.error}
+        error={!canStart ? "No display found for screen recording" : recording.error}
         canStart={canStart}
         onClearHistory={history.clear}
         onRemoveSession={history.remove}
@@ -155,19 +191,26 @@ export function RecorderPage() {
             {settingsError}
           </div>
         )}
+
+        {displayError && (
+          <div className="p-4 bg-red-50 rounded-lg text-red-600 text-sm">
+            {displayError}
+          </div>
+        )}
         
         <VideoSettings
           selectedResolution={settings.resolution}
           onResolutionChange={onResolutionChange}
         />
-        
-        <DisplaySelector
-          selectedDisplay={settings.selected_display}
-          onDisplayChange={onDisplayChange}
-          screenEnabled={settings.screen_enabled}
-          onScreenToggle={onScreenToggle}
+
+        <ScreenRegionPicker
+          display={activeDisplay}
           captureRegion={settings.capture_region}
+          disabled={!activeDisplay}
+          showControls={false}
+          selectionRequestId={selectionRequestId}
           onCaptureRegionChange={onCaptureRegionChange}
+          onSelectionComplete={startAfterRegionSelection}
         />
         
         <CameraSettings

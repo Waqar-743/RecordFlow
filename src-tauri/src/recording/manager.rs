@@ -5,7 +5,7 @@ use crate::recording::camera_capturer::CameraCapturer;
 use crate::recording::compositor::FrameCompositor;
 use crate::recording::screen_capturer::ScreenCapturer;
 use crate::recording::video_encoder::VideoEncoder;
-use crate::state::app_state::AppState;
+use crate::state::app_state::{AppState, CaptureRegion};
 use crate::state::history::{SessionStatus, TimerSession};
 use crate::utils::config::get_default_recordings_path;
 use chrono::{Local, Utc};
@@ -34,6 +34,37 @@ pub struct RecordingManager {
     pause_flag: Arc<AtomicBool>,
     worker: Arc<Mutex<Option<JoinHandle<Result<(), RecorderError>>>>>,
     tick_task: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+}
+
+const H264_DIMENSION_ALIGNMENT: u32 = 16;
+
+fn aligned_dimension_inside(value: u32) -> Result<u32, RecorderError> {
+    if value < H264_DIMENSION_ALIGNMENT {
+        return Err(RecorderError::invalid_settings(
+            "Selected recording area is too small",
+        ));
+    }
+
+    let aligned = value - (value % H264_DIMENSION_ALIGNMENT);
+    if aligned < H264_DIMENSION_ALIGNMENT {
+        return Err(RecorderError::invalid_settings(
+            "Selected recording area is too small",
+        ));
+    }
+
+    Ok(aligned)
+}
+
+fn normalize_capture_region_for_encoding(
+    region: Option<CaptureRegion>,
+) -> Result<Option<CaptureRegion>, RecorderError> {
+    region
+        .map(|mut capture_region| {
+            capture_region.width = aligned_dimension_inside(capture_region.width)?;
+            capture_region.height = aligned_dimension_inside(capture_region.height)?;
+            Ok(capture_region)
+        })
+        .transpose()
 }
 
 impl RecordingManager {
@@ -158,10 +189,14 @@ impl RecordingManager {
         let handle = std::thread::spawn(move || -> Result<(), RecorderError> {
             let run = (|| -> Result<(), RecorderError> {
                 let settings = state.get_settings();
-                let (w, h) = match settings.resolution {
+                let capture_region = normalize_capture_region_for_encoding(settings.capture_region.clone())?;
+                let selected_output_size = capture_region.as_ref().map(|region| {
+                    (region.width, region.height)
+                });
+                let (w, h) = selected_output_size.unwrap_or_else(|| match settings.resolution {
                     crate::state::app_state::Resolution::P720 => (1280, 720),
                     crate::state::app_state::Resolution::P1080 => (1920, 1080),
-                };
+                });
 
                 let fps = settings.fps.max(1);
                 
@@ -188,9 +223,9 @@ impl RecordingManager {
 
                 eprintln!(
                     "RecordFlow: Initializing screen capturer for display {} with region {:?}",
-                    settings.selected_display, settings.capture_region
+                    settings.selected_display, capture_region
                 );
-                let mut capturer = ScreenCapturer::new(settings.selected_display, w, h, settings.capture_region.clone())?;
+                let mut capturer = ScreenCapturer::new(settings.selected_display, w, h, capture_region)?;
                 eprintln!("RecordFlow: Screen capturer initialized successfully");
                 
                 eprintln!("RecordFlow: Initializing video encoder");
@@ -247,18 +282,39 @@ impl RecordingManager {
                     let elapsed_recording = tick.duration_since(started_clock).saturating_sub(paused_total);
                     let mut frame = capturer.capture_frame()?;
 
+                    let mut disable_camera = false;
                     if let Some(cam) = camera.as_mut() {
-                        let cam_frame = cam.capture_frame()?;
-                        FrameCompositor::overlay_bgra(
-                            &mut frame.data,
-                            frame.width,
-                            frame.height,
-                            &cam_frame.data,
-                            cam_frame.width,
-                            cam_frame.height,
-                            settings.camera_position.clone(),
-                            settings.camera_size.clone(),
-                        )?;
+                        match cam.capture_frame() {
+                            Ok(cam_frame) => {
+                                if let Err(e) = FrameCompositor::overlay_bgra(
+                                    &mut frame.data,
+                                    frame.width,
+                                    frame.height,
+                                    &cam_frame.data,
+                                    cam_frame.width,
+                                    cam_frame.height,
+                                    settings.camera_position.clone(),
+                                    settings.camera_size.clone(),
+                                ) {
+                                    eprintln!(
+                                        "RecordFlow: camera overlay failed, continuing screen recording without camera: {e}"
+                                    );
+                                    disable_camera = true;
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "RecordFlow: camera frame failed, continuing screen recording without camera: {e}"
+                                );
+                                disable_camera = true;
+                            }
+                        }
+                    }
+                    if disable_camera {
+                        if let Some(cam) = camera.as_mut() {
+                            cam.stop();
+                        }
+                        camera = None;
                     }
 
                     if let Some(mic) = mic.as_ref() {
@@ -297,6 +353,7 @@ impl RecordingManager {
             if let Err(e) = &run {
                 let _ = ready_tx.send(Err(e.clone()));
                 eprintln!("RecordFlow: recording worker failed: {e}");
+                crate::recording::frame_overlay::hide_recording_frame();
                 stop_flag.store(true, Ordering::SeqCst);
                 *state.is_recording.lock() = false;
                 *state.is_paused.lock() = false;

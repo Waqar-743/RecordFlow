@@ -1,4 +1,5 @@
 use crate::error::RecorderError;
+use crate::recording::frame_overlay;
 use crate::recording::manager::RecordingManager;
 use crate::recording::status::RecordingStatus;
 use crate::utils::history::save_history;
@@ -11,38 +12,16 @@ fn main_window(app: &tauri::AppHandle) -> Result<WebviewWindow, RecorderError> {
         .ok_or_else(|| RecorderError::encoding_failed("Main window was not found"))
 }
 
-#[cfg(target_os = "windows")]
-fn set_window_capture_excluded(
+fn set_window_content_protected(
     window: &WebviewWindow,
-    excluded: bool,
+    protected: bool,
 ) -> Result<(), RecorderError> {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
-    };
-
-    let hwnd = window.hwnd().map_err(|e| {
-        RecorderError::encoding_failed(format!("Unable to read window handle: {e}"))
-    })?;
-    let affinity = if excluded {
-        WDA_EXCLUDEFROMCAPTURE
-    } else {
-        WDA_NONE
-    };
-    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(|e| {
+    window.set_content_protected(protected).map_err(|e| {
         RecorderError::encoding_failed(format!(
-            "Unable to {} RecordFlow from screen capture: {}",
-            if excluded { "exclude" } else { "restore" },
-            e
+            "Unable to {} RecordFlow screen-capture protection: {e}",
+            if protected { "enable" } else { "disable" }
         ))
     })
-}
-
-#[cfg(not(target_os = "windows"))]
-fn set_window_capture_excluded(
-    _window: &WebviewWindow,
-    _excluded: bool,
-) -> Result<(), RecorderError> {
-    Ok(())
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -62,14 +41,15 @@ pub async fn start_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
     let window = main_window(&app)?;
-    set_window_capture_excluded(&window, true)?;
-    let _ = window.hide();
-    std::thread::sleep(Duration::from_millis(350));
+    set_window_content_protected(&window, true)?;
+    let _ = window.show();
+    std::thread::sleep(Duration::from_millis(150));
 
     let path = match state.inner().start_recording().await {
         Ok(path) => path,
         Err(err) => {
-            let _ = set_window_capture_excluded(&window, false);
+            frame_overlay::hide_recording_frame();
+            let _ = set_window_content_protected(&window, true);
             let _ = window.show();
             let _ = window.set_focus();
             return Err(err);
@@ -78,6 +58,12 @@ pub async fn start_recording(
 
     let _ = window.show();
     let _ = window.set_focus();
+    let settings = state.inner().state.get_settings();
+    if let Err(err) =
+        frame_overlay::show_recording_frame(settings.selected_display, settings.capture_region.as_ref())
+    {
+        eprintln!("RecordFlow: recording frame overlay failed: {err}");
+    }
     state.inner().start_tick_emitter(app);
     Ok(path)
 }
@@ -89,9 +75,10 @@ pub async fn stop_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<RecordingStatus, RecorderError> {
     let stop_result = state.inner().stop_recording().await;
+    frame_overlay::hide_recording_frame();
     show_main_window(&app);
     if let Ok(window) = main_window(&app) {
-        let _ = set_window_capture_excluded(&window, false);
+        let _ = set_window_content_protected(&window, true);
     }
     let _path = stop_result?;
 

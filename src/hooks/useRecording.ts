@@ -8,8 +8,8 @@ type UseRecordingResult = {
   status: RecordingStatus;
   loading: boolean;
   error: string | null;
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
+  start: () => Promise<boolean>;
+  stop: () => Promise<boolean>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -56,12 +56,16 @@ export function useRecording(): UseRecordingResult {
     };
   }, []);
 
-  const run = useCallback(async (fn: () => Promise<unknown>, actionName: string = "action") => {
+  const run = useCallback(async (
+    fn: () => Promise<unknown>,
+    actionName: string = "action",
+  ): Promise<boolean> => {
     setError(null);
     setLoading(true);
+    let success = false;
     try {
       await fn();
-      await refresh();
+      success = true;
     } catch (e: unknown) {
       console.error(`Recording ${actionName} failed:`, e);
       // Format error message for display
@@ -75,18 +79,21 @@ export function useRecording(): UseRecordingResult {
         errorMessage = String(e);
       }
       setError(errorMessage);
-      await refresh();
     } finally {
       setLoading(false);
+      await refresh();
     }
+
+    return success;
   }, [refresh]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (): Promise<boolean> => {
     setError(null);
     setLoading(true);
     try {
       const result = await tauriService.startRecording();
       console.log("Recording started:", result);
+      return true;
     } catch (e: unknown) {
       console.error("Recording start failed:", e);
       // Format error message for display
@@ -100,14 +107,15 @@ export function useRecording(): UseRecordingResult {
         errorMessage = String(e);
       }
       setError(errorMessage);
+      return false;
     } finally {
       setLoading(false);
       await refresh();
     }
   }, [refresh]);
 
-  const stop = useCallback(async () => {
-    await run(async () => {
+  const stop = useCallback(async (): Promise<boolean> => {
+    return run(async () => {
       await tauriService.stopRecording();
     }, "stop");
   }, [run]);

@@ -211,7 +211,7 @@ impl ScreenCapturer {
         let settings = Settings::new(
             monitor,
             CursorCaptureSettings::Default,
-            DrawBorderSettings::Default,
+            DrawBorderSettings::WithoutBorder,
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
