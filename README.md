@@ -98,6 +98,6 @@ If recording does not start:
 
 If direct download links do not work, open the [latest release](https://github.com/Waqar-743/RecordFlow/releases/latest) and download the files manually.
 
-## Built By
 
-RecordFlow is built and maintained by Waqar as a practical desktop recording tool for clean demos, tutorials, and everyday capture work.
+
+# Build with a headache 
