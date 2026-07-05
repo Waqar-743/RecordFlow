@@ -1,0 +1,16 @@
+# Artifacts from the main branch that may linger in the working tree.
+# The gh-pages branch ships only the static website at the repo root.
+node_modules/
+src-tauri/
+src/
+dist/
+.vite/
+build/
+target/
+*.log
+*.local
+opencode.json
+.opencode/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="g" cx="78%" cy="18%" r="70%">
+      <stop offset="0%" stop-color="#3a2a12" stop-opacity="0.9"/>
+      <stop offset="55%" stop-color="#1a130c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="14%" cy="92%" r="60%">
+      <stop offset="0%" stop-color="#2a1d0e" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#100c08" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#100c08"/>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+  <g transform="translate(96 96)" font-family="Georgia, 'Times New Roman', serif">
+    <circle cx="14" cy="14" r="6" fill="#f5a524"/>
+    <text x="34" y="20" font-size="20" letter-spacing="6" fill="#b8a888" font-family="Helvetica, Arial, sans-serif">RECORDFLOW · WINDOWS RECORDER · v1.0.1</text>
+  </g>
+  <text x="96" y="330" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="600" fill="#f4ecdf">A recorder built to</text>
+  <text x="96" y="430" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="600" fill="#f4ecdf">stay out of your <tspan fill="#f5a524">recording.</tspan></text>
+  <text x="96" y="548" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#8a7d63">Screen + microphone + camera overlay — quietly, on Windows.</text>
+</svg>
