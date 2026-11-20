@@ -4,15 +4,37 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Resolution {
     #[serde(rename = "720p")]
     P720,
     #[serde(rename = "1080p")]
     P1080,
+    #[serde(rename = "Native")]
+    Native,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Default for Resolution {
+    fn default() -> Self {
+        Self::P1080
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum CaptureMode {
+    Screen,
+    Area,
+    Window,
+}
+
+impl Default for CaptureMode {
+    fn default() -> Self {
+        Self::Screen
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum CameraPosition {
     TopLeft,
@@ -21,12 +43,38 @@ pub enum CameraPosition {
     BottomRight,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Default for CameraPosition {
+    fn default() -> Self {
+        Self::BottomRight
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum CameraSize {
     Small,
     Medium,
     Large,
+}
+
+impl Default for CameraSize {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum CameraShape {
+    Rectangle,
+    Rounded,
+    Circle,
+}
+
+impl Default for CameraShape {
+    fn default() -> Self {
+        Self::Rounded
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,9 +89,11 @@ pub struct CaptureRegion {
 #[serde(default)]
 pub struct RecordingSettings {
     pub screen_enabled: bool,
+    pub capture_mode: CaptureMode,
     pub resolution: Resolution,
     pub fps: u32,
     pub bitrate: u32,
+    pub capture_cursor: bool,
     pub selected_display: u32,
     pub selected_window: Option<String>,
     pub capture_region: Option<CaptureRegion>,
@@ -51,21 +101,27 @@ pub struct RecordingSettings {
     pub camera_enabled: bool,
     pub camera_position: CameraPosition,
     pub camera_size: CameraSize,
+    pub camera_shape: CameraShape,
+    pub camera_mirror: bool,
     pub microphone_device: String,
     pub mic_enabled: bool,
     pub mic_volume: f32,
     pub system_audio_device: String,
     pub system_audio_enabled: bool,
     pub system_audio_volume: f32,
+    pub countdown_seconds: u32,
+    pub auto_minimize: bool,
 }
 
 impl Default for RecordingSettings {
     fn default() -> Self {
         Self {
             screen_enabled: true,
+            capture_mode: CaptureMode::Screen,
             resolution: Resolution::P1080,
-            fps: 30,
-            bitrate: 5000,
+            fps: 60,
+            bitrate: 8000,
+            capture_cursor: true,
             selected_display: 0,
             selected_window: None,
             capture_region: None,
@@ -73,12 +129,16 @@ impl Default for RecordingSettings {
             camera_enabled: false,
             camera_position: CameraPosition::BottomRight,
             camera_size: CameraSize::Medium,
+            camera_shape: CameraShape::Rounded,
+            camera_mirror: true,
             microphone_device: String::new(),
             mic_enabled: true,
-            mic_volume: 0.8,
+            mic_volume: 0.85,
             system_audio_device: String::new(),
             system_audio_enabled: false,
-            system_audio_volume: 0.6,
+            system_audio_volume: 0.75,
+            countdown_seconds: 0,
+            auto_minimize: false,
         }
     }
 }
