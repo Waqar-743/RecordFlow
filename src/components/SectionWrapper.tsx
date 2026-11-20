@@ -1,34 +1,60 @@
-import { useState } from "react";
+import type { ReactNode } from "react";
 
-interface SectionWrapperProps {
+type Props = {
   title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+  subtitle?: string;
+  icon?: ReactNode;
+  headerRight?: ReactNode;
+  children: ReactNode;
+};
+
+export function SectionWrapper({ title, subtitle, icon, headerRight, children }: Props) {
+  return (
+    <section className="rounded-2xl border border-zinc-800/90 bg-zinc-900/75 p-5 shadow-lg shadow-black/20 backdrop-blur-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {icon && (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-700/70 bg-zinc-800/80 text-indigo-400">
+              {icon}
+            </div>
+          )}
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold tracking-tight text-zinc-100">{title}</h2>
+            {subtitle && <p className="text-xs text-zinc-400 truncate">{subtitle}</p>}
+          </div>
+        </div>
+        {headerRight && <div className="shrink-0">{headerRight}</div>}
+      </div>
+      {children}
+    </section>
+  );
 }
 
-export function SectionWrapper({ title, children, defaultOpen = true }: SectionWrapperProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+type ToggleSwitchProps = {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label: string;
+};
 
+export function ToggleSwitch({ checked, onChange, disabled = false, label }: ToggleSwitchProps) {
   return (
-    <div className="bg-gray-200/40 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-6 py-4 flex justify-between items-center group bg-gray-100 hover:bg-gray-200 transition-colors"
-        type="button"
-      >
-        <h2 className="text-lg font-bold text-gray-800">{title}</h2>
-        <svg 
-          className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      <div className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[1000px] opacity-100 p-6' : 'max-h-0 opacity-0 overflow-hidden'} bg-white`}>
-        {children}
-      </div>
-    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/60 disabled:cursor-not-allowed disabled:opacity-40 ${
+        checked ? "bg-indigo-500" : "bg-zinc-700"
+      }`}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-[18px]" : "translate-x-[3px]"
+        }`}
+      />
+    </button>
   );
 }
