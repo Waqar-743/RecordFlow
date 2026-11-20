@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.0.0)'
+        description: 'Version tag (e.g., v1.1.0)'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.1.0'
 
 # Required permissions for creating releases
 permissions:
@@ -18,7 +18,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,32 +48,22 @@ jobs:
           tagName: ${{ github.event.inputs.version || github.ref_name }}
           releaseName: 'RecordFlow ${{ github.event.inputs.version || github.ref_name }}'
           releaseBody: |
-            ## RecordFlow - Screen & Camera Recording App
-            
+            ## RecordFlow — Free, Local Windows Screen & Camera Recorder
+
             ### Download
-            Download the `.exe` or `.msi` installer for Windows below.
-            
-            ### Features
-            - Screen recording with customizable resolution (720p/1080p)
-            - Camera overlay with adjustable position and size
-            - Microphone audio recording with volume control
-            - Pause/Resume recording
-            - Recording history
-            
+            Download the `.exe` or `.msi` installer for Windows below. 100% free, no accounts, no watermarks, and zero cloud uploads.
+
+            ### What's New in v1.1.0
+            - **Capture Modes & Multi-Monitor Previews**: Switch between **Full Screen** (with live GDI monitor thumbnails), **Custom Area** (interactive 8-handle Snipping-style picker), and **Single Window** capture.
+            - **Real-Time System Audio (WASAPI Loopback) + Live Audio Mixer**: Mix desktop/system audio and microphone live at 48 kHz AAC with soft limiting and pause/resume sync.
+            - **60 fps & Hardware-First H.264 Encoding**: Select 720p, 1080p, or Native resolution, 30/60 fps, quality presets, and mouse cursor visibility — with automatic hardware-to-software Media Foundation fallback.
+            - **Async Camera Overlay + Shapes**: Background webcam thread (never throttles 60 fps screen capture) with Rectangle, Rounded, and Circle overlays plus horizontal mirror toggle.
+            - **System Tray & Global Shortcuts**: Record/stop (`Alt+Shift+R`) and pause/resume (`Alt+Shift+P`) from anywhere, live red/amber tray status dots, and Close-to-Tray background mode.
+            - **Countdown, Auto-Minimize & Live Mic VU Meter**: Cancellable `Off / 3s / 5s` countdown, optional minimize-while-recording, and live microphone input level meter.
+            - **Capture-Excluded Presenter Teleprompter**: Always-on-top script window protected with `WDA_EXCLUDEFROMCAPTURE` so you can read notes over your demo while staying invisible in the recording.
+            - **Redesigned Dark Studio UI & Smaller Binary**: Modern dark-graphite cockpit UI, in-app GitHub release update checker, and size-optimized release builds.
+
             ### System Requirements
-            - Windows 10 version 1903 or later
-            - x64 architecture
-            
-            ### Installation
-            1. Download the `.exe` or `.msi` file below
-            2. Run the installer
-            3. Follow the installation wizard
-            4. Launch RecordFlow from the Start Menu
-            
-            ### Changelog
-            - Fixed screen recording initialization issues
-            - Fixed camera preview and recording
-            - Improved error handling and user feedback
-            - Enhanced UI with better layout and controls
+            - Windows 10 version 1903 (build 18362) or later (x64)
           releaseDraft: false
           prerelease: false
