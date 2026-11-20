@@ -40,6 +40,7 @@ pub struct HotkeyApplyResult {
 pub struct HotkeyRuntime {
     bindings: Mutex<Vec<(Shortcut, &'static str)>>,
     last_fired: Mutex<Option<Instant>>,
+    last_failures: Mutex<Vec<HotkeyApplyFailure>>,
 }
 
 impl Default for HotkeyRuntime {
@@ -47,6 +48,7 @@ impl Default for HotkeyRuntime {
         Self {
             bindings: Mutex::new(Vec::new()),
             last_fired: Mutex::new(None),
+            last_failures: Mutex::new(Vec::new()),
         }
     }
 }
@@ -169,6 +171,7 @@ pub fn register_from_config(app: &AppHandle, config: &HotkeyConfig) -> HotkeyApp
 
     if let Some(runtime) = app.try_state::<HotkeyRuntime>() {
         *runtime.bindings.lock() = active_bindings;
+        *runtime.last_failures.lock() = failed.clone();
     }
 
     let (is_recording, is_paused) = app
@@ -195,6 +198,13 @@ pub fn get_hotkeys() -> HotkeyConfig {
     load_config()
         .map(|cfg| cfg.hotkeys)
         .unwrap_or_else(|_| HotkeyConfig::default())
+}
+
+#[tauri::command]
+pub fn get_hotkey_failures(app: AppHandle) -> Vec<HotkeyApplyFailure> {
+    app.try_state::<HotkeyRuntime>()
+        .map(|rt| rt.last_failures.lock().clone())
+        .unwrap_or_default()
 }
 
 #[tauri::command]

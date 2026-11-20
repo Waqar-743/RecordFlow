@@ -2,7 +2,7 @@ use crate::commands::devices::window_extended_bounds;
 use crate::error::RecorderError;
 use crate::recording::audio_capturer::LiveAudioMixer;
 use crate::recording::camera_capturer::CameraCapturer;
-use crate::recording::compositor::FrameCompositor;
+use crate::recording::cursor_tracker::{CursorTracker, TrackArea};
 use crate::recording::screen_capturer::{CaptureTarget, ScreenCapturer};
 use crate::recording::status::RecordingStatus;
 use crate::recording::video_encoder::VideoEncoder;
@@ -12,7 +12,7 @@ use crate::utils::config::get_default_recordings_path;
 use chrono::{Local, Utc};
 use parking_lot::Mutex;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -254,7 +254,7 @@ impl RecordingManager {
             let run = (|| -> Result<(), RecorderError> {
                 let settings = state.get_settings();
 
-                let (capture_target, w, h) = match settings.capture_mode {
+                let (capture_target, w, h, track_area) = match settings.capture_mode {
                     CaptureMode::Window => {
                         let win_id = settings.selected_window.as_deref().ok_or_else(|| {
                             RecorderError::invalid_settings(
@@ -271,7 +271,12 @@ impl RecordingManager {
                                 )
                             })?;
                         let (out_w, out_h) = fit_window_resolution(win_w, win_h, settings.resolution);
-                        (CaptureTarget::Window { hwnd }, out_w, out_h)
+                        (
+                            CaptureTarget::Window { hwnd },
+                            out_w,
+                            out_h,
+                            Some(TrackArea::Window { hwnd }),
+                        )
                     }
                     CaptureMode::Area => {
                         let region = normalize_capture_region_for_encoding(
@@ -284,6 +289,10 @@ impl RecordingManager {
                         })?;
                         let out_w = region.width;
                         let out_h = region.height;
+                        let track_area = TrackArea::for_display_region(
+                            settings.selected_display,
+                            Some((region.x, region.y, region.width, region.height)),
+                        );
                         (
                             CaptureTarget::Monitor {
                                 display_index: settings.selected_display,
@@ -291,6 +300,7 @@ impl RecordingManager {
                             },
                             out_w,
                             out_h,
+                            track_area,
                         )
                     }
                     CaptureMode::Screen => {
@@ -305,6 +315,7 @@ impl RecordingManager {
                             },
                             out_w,
                             out_h,
+                            TrackArea::for_display(settings.selected_display),
                         )
                     }
                 };
@@ -365,6 +376,33 @@ impl RecordingManager {
 
                 let frame_time = Duration::from_secs_f64(1.0 / fps as f64);
                 let started_clock = Instant::now();
+                // Best-effort cursor/click tracking; never affects the recording itself.
+                let mut cursor_tracker = match track_area {
+                    Some(area) => CursorTracker::start(
+                        area,
+                        w,
+                        h,
+                        started_clock,
+                        pause_flag.clone(),
+                        stop_flag.clone(),
+                    ),
+                    None => {
+                        eprintln!("RecordFlow: cursor tracking unavailable for this capture area");
+                        None
+                    }
+                };
+                // Independent synchronized webcam encoder (<stem>.cam.mp4) so camera placement,
+                // scale, shape, mirroring, and visibility can be edited non-destructively later.
+                let cam_output_path = {
+                    let p = Path::new(&output_path_for_thread);
+                    if p.extension().map(|e| e.eq_ignore_ascii_case("mp4")).unwrap_or(false) {
+                        p.with_extension("cam.mp4").to_string_lossy().to_string()
+                    } else {
+                        format!("{output_path_for_thread}.cam.mp4")
+                    }
+                };
+                let mut cam_encoder: Option<(VideoEncoder, u32, u32)> = None;
+                let mut last_cam_frame_number: u64 = 0;
                 let mut paused_total = Duration::from_secs(0);
                 let mut pause_started: Option<Instant> = None;
                 let mut frame_count: u64 = 0;
@@ -399,29 +437,53 @@ impl RecordingManager {
                         .duration_since(started_clock)
                         .saturating_sub(paused_total);
 
-                    let mut frame = capturer.capture_frame()?;
+                    let frame = capturer.capture_frame()?;
 
-                    // Non-blocking camera overlay (never throttles screen FPS)
+                    // Encode webcam to its own independent synchronized MP4 track (non-destructive)
                     let mut disable_camera = false;
                     if let Some(cam) = camera.as_ref() {
                         match cam.latest_frame() {
                             Ok(Some(cam_frame)) => {
-                                if let Err(e) = FrameCompositor::overlay_bgra(
-                                    &mut frame.data,
-                                    frame.width,
-                                    frame.height,
-                                    &cam_frame.data,
-                                    cam_frame.width,
-                                    cam_frame.height,
-                                    settings.camera_position,
-                                    settings.camera_size,
-                                    settings.camera_shape,
-                                    settings.camera_mirror,
-                                ) {
-                                    eprintln!(
-                                        "RecordFlow: camera overlay failed, disabling camera: {e}"
-                                    );
-                                    disable_camera = true;
+                                if cam_frame.frame_number != last_cam_frame_number
+                                    && cam_frame.width >= 16
+                                    && cam_frame.height >= 16
+                                {
+                                    let enc_w = cam_frame.width - (cam_frame.width % 2);
+                                    let enc_h = cam_frame.height - (cam_frame.height % 2);
+                                    if cam_encoder.is_none() {
+                                        match VideoEncoder::new(
+                                            &cam_output_path,
+                                            enc_w,
+                                            enc_h,
+                                            30,
+                                            3500,
+                                            None,
+                                        ) {
+                                            Ok(enc) => {
+                                                eprintln!(
+                                                    "RecordFlow: Independent camera track encoder started ({enc_w}x{enc_h}) -> {cam_output_path}"
+                                                );
+                                                cam_encoder = Some((enc, enc_w, enc_h));
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "RecordFlow: failed to start camera track encoder, disabling camera: {e}"
+                                                );
+                                                disable_camera = true;
+                                            }
+                                        }
+                                    }
+
+                                    if let Some((enc, ew, eh)) = cam_encoder.as_mut() {
+                                        if *ew == cam_frame.width && *eh == cam_frame.height {
+                                            if let Err(e) = enc.encode_frame(&cam_frame.data, elapsed_recording) {
+                                                eprintln!("RecordFlow: camera track encode failed: {e}");
+                                                disable_camera = true;
+                                            } else {
+                                                last_cam_frame_number = cam_frame.frame_number;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Ok(None) => {
@@ -436,6 +498,9 @@ impl RecordingManager {
                     if disable_camera {
                         if let Some(cam) = camera.as_mut() {
                             cam.stop();
+                        }
+                        if let Some((mut enc, _, _)) = cam_encoder.take() {
+                            let _ = enc.finalize();
                         }
                         camera = None;
                     }
@@ -474,12 +539,21 @@ impl RecordingManager {
                 }
 
                 eprintln!("RecordFlow: Stopping capture, encoded {} total frames", frame_count);
+                let cursor_track = cursor_tracker.take().and_then(|t| t.stop());
                 capturer.stop();
                 if let Some(cam) = camera.as_mut() {
                     cam.stop();
                 }
+                if let Some((mut enc, _, _)) = cam_encoder.take() {
+                    if let Err(e) = enc.finalize() {
+                        eprintln!("RecordFlow: camera track finalize failed: {e}");
+                    }
+                }
                 eprintln!("RecordFlow: Finalizing video encoder...");
                 encoder.finalize()?;
+                if let Some(track) = cursor_track {
+                    track.write_next_to(&output_path_for_thread);
+                }
                 if target_closed {
                     crate::recording::frame_overlay::hide_recording_frame();
                     stop_flag.store(true, Ordering::SeqCst);
