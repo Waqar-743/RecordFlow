@@ -1,0 +1,231 @@
+/* ==========================================================================
+   RecordFlow theme tokens — every surface in the app reads from these.
+   Switching <html data-theme> re-skins the whole application instantly.
+   ========================================================================== */
+
+:root,
+[data-theme="graphite"] {
+  --bg: #111214;
+  --bg-elev: #17181b;
+  --surface: #1b1c20;
+  --surface-2: #222328;
+  --surface-3: #2a2b31;
+  --inset: #0c0d0f;
+  --stage: #0b0c0e;
+  --stage-grid: rgba(255, 255, 255, 0.025);
+  --border: #26272c;
+  --border-strong: #34353c;
+  --text: #ececef;
+  --text-2: #a5a7b0;
+  --text-3: #6c6e78;
+  --accent: #8ea2ff;
+  --accent-hover: #a5b5ff;
+  --accent-fg: #0d1022;
+  --accent-soft: rgba(142, 162, 255, 0.14);
+  --accent-ring: rgba(142, 162, 255, 0.4);
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.14);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --scrim: rgba(5, 6, 8, 0.62);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --highlight: rgba(255, 255, 255, 0.04);
+  --wave: #5b6070;
+  --wave-active: var(--accent);
+  --record: #ff4d5e;
+}
+
+[data-theme="ember"] {
+  --bg: #15100d;
+  --bg-elev: #1b1511;
+  --surface: #211915;
+  --surface-2: #2a201b;
+  --surface-3: #342822;
+  --inset: #100b09;
+  --stage: #0f0a08;
+  --stage-grid: rgba(255, 220, 200, 0.03);
+  --border: #2e231e;
+  --border-strong: #3e2f28;
+  --text: #f4ebe6;
+  --text-2: #bfaea5;
+  --text-3: #85736a;
+  --accent: #ff7a59;
+  --accent-hover: #ff9273;
+  --accent-fg: #2a0f06;
+  --accent-soft: rgba(255, 122, 89, 0.15);
+  --accent-ring: rgba(255, 122, 89, 0.42);
+  --scrim: rgba(10, 6, 4, 0.62);
+  --wave: #6f5a50;
+  --record: #ff5a4d;
+}
+
+[data-theme="paper"] {
+  --bg: #f4f0e8;
+  --bg-elev: #f8f5ef;
+  --surface: #fffdf8;
+  --surface-2: #f3eee5;
+  --surface-3: #e9e2d6;
+  --inset: #ece6dc;
+  --stage: #e8e1d5;
+  --stage-grid: rgba(60, 40, 20, 0.04);
+  --border: #e3dbcd;
+  --border-strong: #d2c7b5;
+  --text: #2a251f;
+  --text-2: #6b6256;
+  --text-3: #9a8f80;
+  --accent: #c4572f;
+  --accent-hover: #ad4724;
+  --accent-fg: #fffaf5;
+  --accent-soft: rgba(196, 87, 47, 0.12);
+  --accent-ring: rgba(196, 87, 47, 0.35);
+  --danger: #d9363e;
+  --danger-soft: rgba(217, 54, 62, 0.1);
+  --success: #2f9e5b;
+  --success-soft: rgba(47, 158, 91, 0.12);
+  --warning: #b7791f;
+  --warning-soft: rgba(183, 121, 31, 0.12);
+  --scrim: rgba(60, 48, 32, 0.32);
+  --shadow-sm: 0 1px 2px rgba(80, 60, 30, 0.08);
+  --shadow-md: 0 8px 24px rgba(80, 60, 30, 0.1);
+  --shadow-lg: 0 24px 64px rgba(80, 60, 30, 0.18);
+  --highlight: rgba(255, 255, 255, 0.6);
+  --wave: #c6b9a6;
+  --record: #e0443a;
+}
+
+[data-theme="daylight"] {
+  --bg: #eef1f6;
+  --bg-elev: #f5f7fb;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --surface-3: #e5eaf2;
+  --inset: #e8ecf3;
+  --stage: #e3e8f0;
+  --stage-grid: rgba(15, 23, 42, 0.035);
+  --border: #dfe4ec;
+  --border-strong: #cbd3df;
+  --text: #0f172a;
+  --text-2: #4b5567;
+  --text-3: #8590a2;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent-ring: rgba(37, 99, 235, 0.35);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.1);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.1);
+  --scrim: rgba(15, 23, 42, 0.3);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 64px rgba(15, 23, 42, 0.16);
+  --highlight: rgba(255, 255, 255, 0.7);
+  --wave: #b4bfd0;
+  --record: #e5303f;
+}
+
+[data-theme="midnight"] {
+  --bg: #080d1a;
+  --bg-elev: #0c1322;
+  --surface: #0f172a;
+  --surface-2: #152036;
+  --surface-3: #1c2942;
+  --inset: #060a14;
+  --stage: #050913;
+  --stage-grid: rgba(148, 197, 255, 0.03);
+  --border: #1a2540;
+  --border-strong: #26355a;
+  --text: #e2e8f0;
+  --text-2: #94a3b8;
+  --text-3: #5d6b84;
+  --accent: #38bdf8;
+  --accent-hover: #67cdfa;
+  --accent-fg: #03131f;
+  --accent-soft: rgba(56, 189, 248, 0.14);
+  --accent-ring: rgba(56, 189, 248, 0.42);
+  --scrim: rgba(2, 6, 16, 0.65);
+  --wave: #3c4d6e;
+}
+
+[data-theme="nord"] {
+  --bg: #2a2f3a;
+  --bg-elev: #2e3440;
+  --surface: #353c4a;
+  --surface-2: #3b4252;
+  --surface-3: #434c5e;
+  --inset: #262b35;
+  --stage: #242933;
+  --stage-grid: rgba(236, 239, 244, 0.03);
+  --border: #3d4555;
+  --border-strong: #4c566a;
+  --text: #eceff4;
+  --text-2: #b8c0cf;
+  --text-3: #7f8a9e;
+  --accent: #88c0d0;
+  --accent-hover: #9fd0de;
+  --accent-fg: #1d242e;
+  --accent-soft: rgba(136, 192, 208, 0.16);
+  --accent-ring: rgba(136, 192, 208, 0.45);
+  --danger: #bf616a;
+  --danger-soft: rgba(191, 97, 106, 0.18);
+  --success: #a3be8c;
+  --success-soft: rgba(163, 190, 140, 0.18);
+  --warning: #ebcb8b;
+  --warning-soft: rgba(235, 203, 139, 0.16);
+  --scrim: rgba(20, 24, 31, 0.6);
+  --wave: #5c6780;
+  --record: #e0606c;
+}
+
+[data-theme="rose"] {
+  --bg: #1b1822;
+  --bg-elev: #211d29;
+  --surface: #26212f;
+  --surface-2: #2e2838;
+  --surface-3: #383042;
+  --inset: #15121b;
+  --stage: #131019;
+  --stage-grid: rgba(242, 200, 230, 0.03);
+  --border: #322b3d;
+  --border-strong: #42394f;
+  --text: #efe7f3;
+  --text-2: #b6a9be;
+  --text-3: #7d7086;
+  --accent: #f2789f;
+  --accent-hover: #f692b3;
+  --accent-fg: #2b0c17;
+  --accent-soft: rgba(242, 120, 159, 0.15);
+  --accent-ring: rgba(242, 120, 159, 0.42);
+  --scrim: rgba(10, 6, 14, 0.62);
+  --wave: #5f5170;
+}
+
+[data-theme="forest"] {
+  --bg: #0f1512;
+  --bg-elev: #131a16;
+  --surface: #17201b;
+  --surface-2: #1d2822;
+  --surface-3: #25332b;
+  --inset: #0b100d;
+  --stage: #090e0b;
+  --stage-grid: rgba(200, 255, 220, 0.025);
+  --border: #1f2b24;
+  --border-strong: #2c3c33;
+  --text: #e5efe9;
+  --text-2: #a2b5aa;
+  --text-3: #6a7d72;
+  --accent: #5ee0a8;
+  --accent-hover: #7beab9;
+  --accent-fg: #04170e;
+  --accent-soft: rgba(94, 224, 168, 0.14);
+  --accent-ring: rgba(94, 224, 168, 0.4);
+  --scrim: rgba(3, 8, 5, 0.62);
+  --wave: #3f5a4c;
+}

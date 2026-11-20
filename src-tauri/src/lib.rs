@@ -7,14 +7,15 @@ mod utils;
 
 use crate::commands::devices::{
     get_audio_inputs, get_cameras, get_capture_windows, get_display_thumbnail, get_displays,
-    get_system_audio_devices,
+    get_system_audio_devices, get_window_thumbnail,
 };
 use crate::commands::files::{
     delete_recording, get_last_recording_info, open_recording_in_explorer, open_recordings_folder,
 };
 use crate::commands::history::{clear_timer_history, delete_timer_session, get_timer_history};
 use crate::commands::hotkeys::{
-    get_hotkeys, handle_shortcut_event, register_from_config, set_hotkeys, HotkeyRuntime,
+    get_hotkey_failures, get_hotkeys, handle_shortcut_event, register_from_config, set_hotkeys,
+    HotkeyRuntime,
 };
 use crate::commands::recording::{
     get_recording_status, get_timer_state, pause_recording, pause_timer, resume_recording,
@@ -64,6 +65,8 @@ pub fn run() {
         .manage(recording_manager)
         .manage(HotkeyRuntime::default())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -98,6 +101,7 @@ pub fn run() {
             // Devices
             get_displays,
             get_display_thumbnail,
+            get_window_thumbnail,
             get_capture_windows,
             get_cameras,
             get_audio_inputs,
@@ -125,6 +129,7 @@ pub fn run() {
             clear_timer_history,
             // Global Hotkeys & Tray / Window
             get_hotkeys,
+            get_hotkey_failures,
             set_hotkeys,
             set_tray_state,
             get_close_to_tray,

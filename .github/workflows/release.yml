@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.1.0)'
+        description: 'Version tag (e.g., v1.2.0)'
         required: true
-        default: 'v1.1.0'
+        default: 'v1.2.0'
 
 # Required permissions for creating releases
 permissions:
@@ -48,20 +48,26 @@ jobs:
           tagName: ${{ github.event.inputs.version || github.ref_name }}
           releaseName: 'RecordFlow ${{ github.event.inputs.version || github.ref_name }}'
           releaseBody: |
-            ## RecordFlow — Free, Local Windows Screen & Camera Recorder
+            ## RecordFlow v1.2.0 — Complete Studio Redesign & Post-Recording Editor
 
             ### Download
-            Download the `.exe` or `.msi` installer for Windows below. 100% free, no accounts, no watermarks, and zero cloud uploads.
+            Download the `.exe` or `.msi` installer for Windows below. 100% free, open-source, no watermarks, and zero cloud uploads.
 
-            ### What's New in v1.1.0
-            - **Capture Modes & Multi-Monitor Previews**: Switch between **Full Screen** (with live GDI monitor thumbnails), **Custom Area** (interactive 8-handle Snipping-style picker), and **Single Window** capture.
-            - **Real-Time System Audio (WASAPI Loopback) + Live Audio Mixer**: Mix desktop/system audio and microphone live at 48 kHz AAC with soft limiting and pause/resume sync.
-            - **60 fps & Hardware-First H.264 Encoding**: Select 720p, 1080p, or Native resolution, 30/60 fps, quality presets, and mouse cursor visibility — with automatic hardware-to-software Media Foundation fallback.
-            - **Async Camera Overlay + Shapes**: Background webcam thread (never throttles 60 fps screen capture) with Rectangle, Rounded, and Circle overlays plus horizontal mirror toggle.
-            - **System Tray & Global Shortcuts**: Record/stop (`Alt+Shift+R`) and pause/resume (`Alt+Shift+P`) from anywhere, live red/amber tray status dots, and Close-to-Tray background mode.
-            - **Countdown, Auto-Minimize & Live Mic VU Meter**: Cancellable `Off / 3s / 5s` countdown, optional minimize-while-recording, and live microphone input level meter.
-            - **Capture-Excluded Presenter Teleprompter**: Always-on-top script window protected with `WDA_EXCLUDEFROMCAPTURE` so you can read notes over your demo while staying invisible in the recording.
-            - **Redesigned Dark Studio UI & Smaller Binary**: Modern dark-graphite cockpit UI, in-app GitHub release update checker, and size-optimized release builds.
+            ### What's New in v1.2.0
+            - **Ground-Up Studio Redesign & Maximized Launch**: Opens maximized into a clutter-free desktop studio shell with a streamlined top navigation bar (`Record` / `Edit` workspace switcher, `Open project`, `Save project`, `Theme Selector`, `Script` panel toggle, and `Shortcuts`) plus a dismissible alert banner for hotkey conflict notices.
+            - **8 Dynamic Persistent Themes**: Instant system-wide theme switching across **Graphite**, **Ember**, **Paper**, **Daylight**, **Midnight**, **Nord**, **Rosé**, and **Forest** with live swatches and session persistence.
+            - **Refined Record Workspace & Screen-Share Picker**:
+              - **Screen**, **Area** (auto-minimizes app into a full-screen translucent region selector with live dimensions & `Esc` restore), and **Window** (live active window enumeration, search, thumbnails, and `"Only this window is recorded"` preview) capture modes.
+              - Structured **Microphone** (live VU meter + device picker), **Camera** (independent synchronized track + mini preview), and **Countdown** (`Off / 3s / 5s`) control cards, **Hide app while recording**, and a **Screen-Share Source Picker** modal with **Share with system audio**.
+            - **Independent Synchronized Camera Track & 60 Hz Cursor Tracking**:
+              - Captures webcam into a synchronized companion stream (`.cam.mp4`) and logs cursor positions & clicks (`.cursor.json`) at 60 Hz so everything remains non-destructively editable after recording.
+            - **Post-Recording Edit Studio**:
+              - Automatic transition into the **Edit** workspace with a 6-tab Inspector (**Canvas**, **Zoom**, **Cursor**, **Audio**, **Camera**, **Blur**).
+              - **Canvas & Backgrounds**: `16:9`, `9:16`, `1:1`, `4:5`, and `Original` aspect ratios, `Fit` vs `Fill` framing, padding, corner radius, drop shadow, 18 curated backgrounds, and Custom Image upload.
+              - **Non-Destructive Camera Overlay**: Reposition webcam after recording via quick-snap presets or direct drag-and-drop on the canvas, adjust size, shape (`Circle`, `Rounded`, `Square`), mirror, border, shadow, or toggle visibility on/off.
+              - **Interactive Timeline & Playback Bar**: Play/Pause, timecode, draggable & editable Trim Start/End handles, zoom intensity presets (`Subtle`, `Balanced`, `Close`), auto-zoom from clicks, audio waveform track, and bottom-right **Export**.
+            - **Local 4K MP4 & WebM Export Modal**:
+              - Renders locally on your machine (`MP4` or `WebM`, `4K / 1440p / 1080p / 720p`, `60 / 30 fps`, `Best / High / Small` quality) with real-time progress.
 
             ### System Requirements
             - Windows 10 version 1903 (build 18362) or later (x64)

@@ -7,12 +7,10 @@ import { EyeOffIcon, FileTextIcon, PauseIcon, PlayIcon, RotateCcwIcon, XIcon } f
 
 const STORAGE_KEY = "recordflow_teleprompter_script_v1";
 const DEFAULT_SCRIPT =
-  "Welcome to this demo!\n\nToday I'll walk through the key workflow step by step.\n\nNotice how smoothly everything stays focused — this script window is excluded from screen capture so viewers never see it.";
+  "Welcome to this walkthrough!\n\nToday I'll show the core workflow step by step.\n\nNotice how effortlessly you can read your talking points — this Script panel is excluded from screen capture so viewers never see it.";
 
 type Props = {
-  /** True when mounted in its own capture-excluded always-on-top Tauri window (`/?teleprompter=1`). */
   standalone?: boolean;
-  /** Used in browser-dev floating overlay mode. */
   isOpen?: boolean;
   isRecording?: boolean;
   isPaused?: boolean;
@@ -35,34 +33,29 @@ export function TeleprompterWindow({
   });
   const [isScrolling, setIsScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(2);
-  const [fontSize, setFontSize] = useState(16);
-  const [opacity, setOpacity] = useState(92);
+  const [fontSize, setFontSize] = useState(15);
+  const [opacity, setOpacity] = useState(96);
   const [liveRecording, setLiveRecording] = useState(propIsRecording);
   const [livePaused, setLivePaused] = useState(propIsPaused);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Persist presenter notes across sessions
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, scriptText);
     } catch {
-      // ignore storage quota errors
+      /* ignore */
     }
   }, [scriptText]);
 
-  // Keep synced with props when embedded (browser fallback mode)
   useEffect(() => {
     if (standalone) return;
     setLiveRecording(propIsRecording);
     setLivePaused(propIsPaused);
   }, [propIsPaused, propIsRecording, standalone]);
 
-  // Listen to Tauri recording status events when running in standalone overlay window
   useEffect(() => {
     if (!standalone || !isTauriApp()) return;
-
-    // Enforce capture exclusion from inside the standalone window as well
     void getCurrentWebviewWindow()
       .setContentProtected(true)
       .catch(() => {});
@@ -77,7 +70,6 @@ export function TeleprompterWindow({
     };
   }, [standalone]);
 
-  // Auto-start scrolling when recording begins, pause when paused, stop when recording stops
   useEffect(() => {
     if (liveRecording && !livePaused) {
       setIsScrolling(true);
@@ -86,7 +78,6 @@ export function TeleprompterWindow({
     }
   }, [livePaused, liveRecording]);
 
-  // Smooth requestAnimationFrame scroll loop
   useEffect(() => {
     if (!isScrolling) return;
     let rafId = 0;
@@ -116,63 +107,75 @@ export function TeleprompterWindow({
   };
 
   const containerClass = standalone
-    ? "flex h-screen w-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100 select-none"
-    : "fixed bottom-6 right-6 z-50 flex h-[380px] w-[360px] flex-col overflow-hidden rounded-2xl border border-zinc-700/90 bg-zinc-950 text-zinc-100 shadow-2xl select-none";
+    ? "flex h-screen w-screen flex-col overflow-hidden select-none"
+    : "rf-pop-in fixed bottom-20 right-6 z-40 flex h-[390px] w-[360px] flex-col overflow-hidden rounded-2xl select-none";
 
   return (
-    <div className={containerClass} style={{ opacity: opacity / 100 }}>
-      {/* Header / Drag Handle */}
+    <div
+      className={containerClass}
+      style={{
+        opacity: opacity / 100,
+        background: "var(--surface)",
+        color: "var(--text)",
+        border: standalone ? undefined : "1px solid var(--border-strong)",
+        boxShadow: standalone ? undefined : "var(--shadow-lg)",
+      }}
+    >
+      {/* Header / Drag Region */}
       <div
         data-tauri-drag-region={standalone ? "" : undefined}
-        className="flex cursor-move items-center justify-between border-b border-zinc-800 bg-zinc-900/95 px-3.5 py-2.5"
+        className="flex cursor-move items-center justify-between px-3.5 py-2.5"
+        style={{
+          background: "var(--bg-elev)",
+          borderBottom: "1px solid var(--border)",
+        }}
       >
         <div
           data-tauri-drag-region={standalone ? "" : undefined}
-          className="flex items-center gap-2 min-w-0"
+          className="flex min-w-0 items-center gap-2"
         >
-          <FileTextIcon className="h-4 w-4 shrink-0 text-indigo-400" />
-          <span className="truncate text-xs font-semibold text-zinc-100">
-            Presenter Teleprompter
-          </span>
+          <FileTextIcon className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} />
+          <span className="truncate text-xs font-semibold">Presenter Script</span>
           <span
-            title="Excluded from Windows screen capture (WDA_EXCLUDEFROMCAPTURE)"
-            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400"
+            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+            style={{ background: "var(--success-soft)", color: "var(--success)" }}
           >
             <EyeOffIcon className="h-2.5 w-2.5" />
-            Hidden in MP4
+            Hidden in capture
           </span>
-          {liveRecording && (
-            <span
-              className={`h-2 w-2 rounded-full ${
-                livePaused ? "bg-amber-400" : "bg-red-500 rf-recording-dot"
-              }`}
-            />
-          )}
         </div>
         <button
           type="button"
           onClick={() => void handleClose()}
-          title="Close teleprompter"
-          className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          aria-label="Close script panel"
+          className="rounded-md p-1 transition-colors"
+          style={{ color: "var(--text-2)" }}
         >
           <XIcon className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {/* Controls Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-[11px]">
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[11px]"
+        style={{
+          background: "var(--surface-2)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setIsScrolling((v) => !v)}
-            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-semibold transition-colors ${
+            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-semibold transition-colors"
+            style={
               isScrolling
-                ? "bg-indigo-500 text-white"
-                : "border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-            }`}
+                ? { background: "var(--accent)", color: "var(--accent-fg)" }
+                : { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }
+            }
           >
             {isScrolling ? <PauseIcon className="h-3 w-3" /> : <PlayIcon className="h-3 w-3" />}
-            <span>{isScrolling ? "Pause" : "Scroll"}</span>
+            <span>{isScrolling ? "Pause" : "Auto-scroll"}</span>
           </button>
           <button
             type="button"
@@ -180,14 +183,15 @@ export function TeleprompterWindow({
               if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
             }}
             title="Rewind to top"
-            className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 transition-colors hover:text-white"
+            className="rounded-lg p-1.5"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-2)" }}
           >
             <RotateCcwIcon className="h-3 w-3" />
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-zinc-400">
+        <div className="flex items-center gap-2.5">
+          <label className="flex items-center gap-1.5" style={{ color: "var(--text-2)" }}>
             <span>Speed</span>
             <input
               type="range"
@@ -200,11 +204,11 @@ export function TeleprompterWindow({
             />
           </label>
 
-          <label className="flex items-center gap-1.5 text-zinc-400">
-            <span>Opacity</span>
+          <label className="flex items-center gap-1.5" style={{ color: "var(--text-2)" }}>
+            <span>Alpha</span>
             <input
               type="range"
-              min="45"
+              min="50"
               max="100"
               step="5"
               value={opacity}
@@ -217,14 +221,16 @@ export function TeleprompterWindow({
             <button
               type="button"
               onClick={() => setFontSize((s) => Math.max(12, s - 2))}
-              className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-zinc-200 hover:bg-zinc-700"
+              className="rounded px-1.5 py-0.5 text-[11px]"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
             >
               A-
             </button>
             <button
               type="button"
               onClick={() => setFontSize((s) => Math.min(28, s + 2))}
-              className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-zinc-200 hover:bg-zinc-700"
+              className="rounded px-1.5 py-0.5 text-[11px]"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
             >
               A+
             </button>
@@ -233,17 +239,14 @@ export function TeleprompterWindow({
       </div>
 
       {/* Script Area */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4 custom-scrollbar"
-      >
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 rf-scroll">
         <textarea
           value={scriptText}
           onChange={(e) => setScriptText(e.target.value)}
-          placeholder="Type or paste your presenter notes here..."
+          placeholder="Type or paste your presenter notes here…"
           rows={14}
-          className="h-full min-h-[260px] w-full resize-none bg-transparent leading-relaxed text-zinc-100 placeholder-zinc-600 focus:outline-none select-text"
-          style={{ fontSize: `${fontSize}px` }}
+          className="h-full min-h-[260px] w-full resize-none bg-transparent leading-relaxed outline-none select-text"
+          style={{ fontSize: `${fontSize}px`, color: "var(--text)" }}
         />
       </div>
     </div>

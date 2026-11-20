@@ -1,0 +1,213 @@
+@import "./themes.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Transparent root when rendered as the fullscreen Tauri region picker overlay */
+html.rf-picker-mode,
+html.rf-picker-mode body,
+html.rf-picker-mode #root {
+  background: transparent !important;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Theme-aware scrollbars */
+.rf-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.rf-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rf-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+.rf-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+
+/* Subtle studio stage grid backdrop */
+.rf-stage-bg {
+  background-color: var(--stage);
+  background-image:
+    radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 60%),
+    linear-gradient(to right, var(--stage-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--stage-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
+}
+
+/* Studio surfaces & cards */
+.rf-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.rf-surface-elev {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+
+/* Custom range slider */
+input[type="range"].rf-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--surface-3);
+  cursor: pointer;
+  outline: none;
+}
+
+input[type="range"].rf-slider:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+input[type="range"].rf-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s ease;
+}
+
+input[type="range"].rf-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* Focus ring */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* Recording pulse */
+@keyframes rf-rec-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.rf-rec-dot {
+  animation: rf-rec-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes rf-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.rf-pop-in {
+  animation: rf-pop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rf-countdown-pop {
+  0% {
+    transform: scale(0.75);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.rf-countdown-num {
+  animation: rf-countdown-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Fullscreen translucent region picker overlay */
+.rf-region-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  cursor: crosshair;
+  user-select: none;
+  background: rgba(9, 10, 14, 0.48);
+  touch-action: none;
+}
+
+.rf-region-picker-selection {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: rgba(142, 162, 255, 0.08);
+  box-shadow: 0 0 0 99999px rgba(6, 8, 12, 0.52);
+  cursor: move;
+}
+
+.rf-region-picker-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+  background-size: 33.333% 33.333%;
+}
+
+.rf-region-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  margin-top: -6px;
+  border-radius: 3px;
+  border: 1.5px solid #090a0e;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+
+.rf-region-toolbar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  z-index: 5;
+}

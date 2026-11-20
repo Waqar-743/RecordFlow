@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { DEFAULT_HOTKEYS, isTauriApp, tauriService } from "../services/tauri.service";
 import type { HotkeyApplyFailure, HotkeyConfig } from "../types";
 import { CheckIcon, GlobeIcon, KeyboardIcon, RotateCcwIcon, XIcon } from "./Icons";
-import { ToggleSwitch } from "./SectionWrapper";
+import { ToggleSwitch } from "./ToggleSwitch";
 
 type Props = {
   isOpen: boolean;
   hotkeys: HotkeyConfig;
-  onSaved: (next: HotkeyConfig) => void;
+  onSaved: (next: HotkeyConfig, failures: HotkeyApplyFailure[]) => void;
   onClose: () => void;
 };
 
@@ -58,6 +58,15 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
   }, [hotkeys, isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !capturing) onClose();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [capturing, isOpen, onClose]);
+
+  useEffect(() => {
     if (!isOpen || !capturing) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -89,8 +98,7 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
       }
 
       parts.push(keyName);
-      const combo = parts.join("+");
-      setDraft((prev) => ({ ...prev, [capturing]: combo }));
+      setDraft((prev) => ({ ...prev, [capturing]: parts.join("+") }));
       setCapturing(null);
     };
 
@@ -116,7 +124,7 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
     setFailures([]);
     try {
       const result = await tauriService.setHotkeys(draft);
-      onSaved(result.hotkeys);
+      onSaved(result.hotkeys, result.failed);
       if (result.failed.length > 0) {
         setFailures(result.failed);
       } else {
@@ -131,28 +139,44 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm select-none"
+      style={{ background: "var(--scrim)" }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 text-zinc-100 shadow-2xl"
+        className="rf-pop-in w-full max-w-md rounded-2xl p-5"
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border-strong)",
+          color: "var(--text)",
+          boxShadow: "var(--shadow-lg)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 text-indigo-400">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-xl"
+              style={{
+                background: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
               <KeyboardIcon className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Shortcuts &amp; System Tray</h3>
-              <p className="text-xs text-zinc-400">Click any shortcut, then press your new keys</p>
+              <h3 className="text-sm font-semibold">Shortcuts &amp; System Tray</h3>
+              <p className="text-xs" style={{ color: "var(--text-2)" }}>
+                Click any shortcut, then press your new key combo
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="rounded-lg p-1.5"
+            style={{ color: "var(--text-2)" }}
           >
             <XIcon className="h-4 w-4" />
           </button>
@@ -161,14 +185,18 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
         {/* Global Shortcut Bindings */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-              <GlobeIcon className="h-3.5 w-3.5 text-indigo-400" />
+            <span
+              className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--text-3)" }}
+            >
+              <GlobeIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
               Global System Hotkeys
             </span>
             <button
               type="button"
               onClick={() => setDraft({ ...DEFAULT_HOTKEYS })}
-              className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+              className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline"
+              style={{ color: "var(--text-2)" }}
             >
               <RotateCcwIcon className="h-3 w-3" />
               Reset defaults
@@ -185,30 +213,40 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => setCapturing(isBinding ? null : item.key)}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all ${
-                    isBinding
-                      ? "border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/40"
-                      : "border-zinc-800 bg-zinc-950/70 hover:border-zinc-700"
-                  }`}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left transition-all"
+                  style={{
+                    background: isBinding ? "var(--accent-soft)" : "var(--inset)",
+                    border: `1px solid ${isBinding ? "var(--accent)" : "var(--border)"}`,
+                  }}
                 >
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-zinc-100">{item.label}</div>
-                    <div className="text-[11px] text-zinc-500">{item.desc}</div>
+                    <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                      {item.label}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--text-3)" }}>
+                      {item.desc}
+                    </div>
                   </div>
                   <kbd
-                    className={`shrink-0 rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold ${
-                      isBinding
-                        ? "animate-pulse border-indigo-400 bg-indigo-500 text-white"
-                        : "border-zinc-700 bg-zinc-900 text-indigo-300"
+                    className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-xs font-semibold ${
+                      isBinding ? "animate-pulse" : ""
                     }`}
+                    style={
+                      isBinding
+                        ? { background: "var(--accent)", color: "var(--accent-fg)" }
+                        : {
+                            background: "var(--surface-2)",
+                            border: "1px solid var(--border-strong)",
+                            color: "var(--accent)",
+                          }
+                    }
                   >
-                    {isBinding ? "Press keys..." : formatAccelerator(value)}
+                    {isBinding ? "Press keys…" : formatAccelerator(value)}
                   </kbd>
                 </button>
                 {bare && !isBinding && (
-                  <p className="px-1 text-[11px] text-amber-400">
-                    Warning: binding {formatAccelerator(value)} without Ctrl, Alt, or Shift will
-                    intercept that key in every application while RecordFlow runs.
+                  <p className="px-1 text-[11px]" style={{ color: "var(--warning)" }}>
+                    Binding {formatAccelerator(value)} without Ctrl, Alt, or Shift intercepts that key system-wide.
                   </p>
                 )}
               </div>
@@ -217,16 +255,19 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
         </div>
 
         {/* Tray Behavior */}
-        <div className="mt-5 border-t border-zinc-800 pt-4">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3.5 py-3">
+        <div className="mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <div
+            className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3"
+            style={{ background: "var(--inset)", border: "1px solid var(--border)" }}
+          >
             <div>
-              <div className="text-xs font-semibold text-zinc-100">
+              <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
                 Keep running in system tray when closed
               </div>
-              <div className="text-[11px] text-zinc-500">
+              <div className="text-[11px]" style={{ color: "var(--text-3)" }}>
                 {isTauriApp()
-                  ? "Global shortcuts stay active in the background. Quit from the tray icon."
-                  : "Available in the Windows desktop app."}
+                  ? "Global shortcuts remain active in the background."
+                  : "Available in the desktop application."}
               </div>
             </div>
             <ToggleSwitch
@@ -237,12 +278,18 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
           </div>
         </div>
 
-        {/* Registration Errors */}
         {failures.length > 0 && (
-          <div className="mt-4 space-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          <div
+            className="mt-4 space-y-1 rounded-xl p-3 text-xs"
+            style={{
+              background: "var(--warning-soft)",
+              border: "1px solid var(--warning)",
+              color: "var(--text)",
+            }}
+          >
             <div className="font-semibold">Some shortcuts could not be registered:</div>
             {failures.map((f) => (
-              <div key={`${f.action}-${f.accelerator}`} className="text-[11px] text-amber-300/90">
+              <div key={`${f.action}-${f.accelerator}`} className="text-[11px]" style={{ color: "var(--text-2)" }}>
                 • {f.accelerator}: {f.reason}
               </div>
             ))}
@@ -250,17 +297,25 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
         )}
 
         {error && (
-          <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300">
+          <div
+            className="mt-3 rounded-xl p-2.5 text-xs"
+            style={{ background: "var(--danger-soft)", border: "1px solid var(--danger)", color: "var(--danger)" }}
+          >
             {error}
           </div>
         )}
 
-        {/* Footer Actions */}
+        {/* Footer */}
         <div className="mt-5 flex gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950/70 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="flex-1 rounded-xl py-2.5 text-xs font-medium"
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              color: "var(--text-2)",
+            }}
           >
             Cancel
           </button>
@@ -268,10 +323,11 @@ export function HotkeyModal({ isOpen, hotkeys, onSaved, onClose }: Props) {
             type="button"
             disabled={saving}
             onClick={() => void handleSave()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-500 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-colors hover:bg-indigo-400 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold shadow disabled:opacity-50"
+            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
           >
             <CheckIcon className="h-3.5 w-3.5" />
-            <span>{saving ? "Applying..." : "Save Shortcuts"}</span>
+            <span>{saving ? "Applying…" : "Save Shortcuts"}</span>
           </button>
         </div>
       </div>

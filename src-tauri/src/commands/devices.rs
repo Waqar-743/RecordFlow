@@ -9,6 +9,7 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HALFTONE, HMONITOR, MONITORINFOEXW, SRCCOPY,
 };
+use windows::Win32::UI::WindowsAndMessaging::IsIconic;
 use windows_capture::monitor::Monitor;
 use windows_capture::window::Window;
 
@@ -147,19 +148,22 @@ pub async fn get_displays() -> Result<Vec<DisplayInfo>, RecorderError> {
     Ok(displays)
 }
 
-/// Capture a fast scaled PNG thumbnail of the selected display via GDI StretchBlt.
-#[tauri::command]
-pub async fn get_display_thumbnail(display_index: u32) -> Result<Vec<u8>, RecorderError> {
-    let monitors = Monitor::enumerate().map_err(|e| RecorderError::file_error(e.to_string()))?;
-    let monitor = monitors
-        .get(display_index as usize)
-        .ok_or_else(|| RecorderError::device_not_found("Display"))?;
+fn clamp_thumbnail_width(max_width: Option<u32>) -> u32 {
+    max_width.unwrap_or(640).clamp(160, 1920)
+}
 
-    let rect = monitor_rect(monitor)?;
-    let src_w = (rect.right - rect.left).max(1) as u32;
-    let src_h = (rect.bottom - rect.top).max(1) as u32;
-
-    let max_width: u32 = 640;
+/// Capture a screen rectangle (virtual-desktop coordinates) via GDI StretchBlt and
+/// return it as a PNG scaled down to at most `max_width` pixels wide.
+fn capture_screen_rect_png(
+    left: i32,
+    top: i32,
+    src_w: u32,
+    src_h: u32,
+    max_width: u32,
+) -> Result<Vec<u8>, RecorderError> {
+    let src_w = src_w.max(1);
+    let src_h = src_h.max(1);
+    let max_width = max_width.max(2);
     let scale = (max_width as f64 / src_w as f64).min(1.0);
     let dst_w = ((src_w as f64 * scale).round() as u32).max(2);
     let dst_h = ((src_h as f64 * scale).round() as u32).max(2);
@@ -191,8 +195,8 @@ pub async fn get_display_thumbnail(display_index: u32) -> Result<Vec<u8>, Record
             dst_w as i32,
             dst_h as i32,
             Some(screen),
-            rect.left,
-            rect.top,
+            left,
+            top,
             src_w as i32,
             src_h as i32,
             SRCCOPY,
@@ -229,7 +233,7 @@ pub async fn get_display_thumbnail(display_index: u32) -> Result<Vec<u8>, Record
 
         if !copied || rows == 0 {
             return Err(RecorderError::file_error(
-                "Failed to capture display thumbnail",
+                "Failed to capture screen thumbnail",
             ));
         }
     }
@@ -254,6 +258,57 @@ pub async fn get_display_thumbnail(display_index: u32) -> Result<Vec<u8>, Record
     }
 
     Ok(png_bytes)
+}
+
+/// Capture a fast scaled PNG thumbnail of the selected display via GDI StretchBlt.
+#[tauri::command]
+pub async fn get_display_thumbnail(
+    display_index: u32,
+    max_width: Option<u32>,
+) -> Result<Vec<u8>, RecorderError> {
+    let monitors = Monitor::enumerate().map_err(|e| RecorderError::file_error(e.to_string()))?;
+    let monitor = monitors
+        .get(display_index as usize)
+        .ok_or_else(|| RecorderError::device_not_found("Display"))?;
+
+    let rect = monitor_rect(monitor)?;
+    let src_w = (rect.right - rect.left).max(1) as u32;
+    let src_h = (rect.bottom - rect.top).max(1) as u32;
+
+    capture_screen_rect_png(
+        rect.left,
+        rect.top,
+        src_w,
+        src_h,
+        clamp_thumbnail_width(max_width),
+    )
+}
+
+/// Capture a scaled PNG thumbnail of an application window by cropping its on-screen
+/// bounds. `window_id` uses the `window:<hwnd>` format returned by `get_capture_windows`.
+#[tauri::command]
+pub async fn get_window_thumbnail(
+    window_id: String,
+    max_width: Option<u32>,
+) -> Result<Vec<u8>, RecorderError> {
+    let hwnd = window_id
+        .trim()
+        .strip_prefix("window:")
+        .and_then(|s| s.parse::<isize>().ok())
+        .ok_or_else(|| RecorderError::invalid_settings("Invalid window id"))?;
+
+    let is_minimized = unsafe { IsIconic(HWND(hwnd as *mut c_void)).as_bool() };
+    if is_minimized {
+        return Err(RecorderError::invalid_settings(
+            "Window is minimized; restore it to show a preview",
+        ));
+    }
+
+    let (left, top, width, height) = window_extended_bounds(hwnd).ok_or_else(|| {
+        RecorderError::device_not_found("Window bounds (it may be closed or hidden)")
+    })?;
+
+    capture_screen_rect_png(left, top, width, height, clamp_thumbnail_width(max_width))
 }
 
 /// List capturable application windows (excluding RecordFlow's own windows).

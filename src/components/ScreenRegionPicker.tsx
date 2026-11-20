@@ -1,8 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isTauriApp } from "../services/tauri.service";
+import { isTauriApp, tauriService } from "../services/tauri.service";
 import type { CaptureRegion, DisplayInfo } from "../types";
+import { InlineRegionOverlay } from "./InlineRegionOverlay";
 
 export type AreaPickRequest = {
   id: number;
@@ -16,21 +17,10 @@ type Props = {
   pickRequest: AreaPickRequest | null;
   onCaptureRegionChange: (region: CaptureRegion | null) => Promise<void>;
   onSelectionComplete?: (region: CaptureRegion) => Promise<void>;
+  onCancelled?: () => void;
 };
 
 const PICKER_WINDOW_LABEL = "region-picker";
-const H264_DIMENSION_ALIGNMENT = 16;
-
-function alignedWithinBounds(value: number, maxValue: number): number {
-  const bounded = Math.min(
-    Math.max(H264_DIMENSION_ALIGNMENT, value),
-    Math.max(H264_DIMENSION_ALIGNMENT, maxValue),
-  );
-  return Math.max(
-    H264_DIMENSION_ALIGNMENT,
-    bounded - (bounded % H264_DIMENSION_ALIGNMENT),
-  );
-}
 
 export function ScreenRegionPicker({
   display,
@@ -39,38 +29,44 @@ export function ScreenRegionPicker({
   pickRequest,
   onCaptureRegionChange,
   onSelectionComplete,
+  onCancelled,
 }: Props) {
-  const [error, setError] = useState<string | null>(null);
+  const [browserOverlayRequest, setBrowserOverlayRequest] = useState<AreaPickRequest | null>(null);
   const handledRequestId = useRef<number>(0);
 
+  const restoreMain = useCallback(async () => {
+    if (!isTauriApp()) return;
+    try {
+      await tauriService.restoreMainWindow();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const beginPicking = useCallback(
-    async (shouldStartAfterSelection: boolean) => {
+    async (req: AreaPickRequest) => {
       if (!display || disabled) return;
-      setError(null);
+
+      // Browser mode: render full-viewport translucent interactive overlay directly
+      if (!isTauriApp()) {
+        setBrowserOverlayRequest(req);
+        return;
+      }
 
       try {
-        if (!isTauriApp()) {
-          const fallbackRegion: CaptureRegion = {
-            x: Math.round(display.width * 0.12),
-            y: Math.round(display.height * 0.12),
-            width: alignedWithinBounds(Math.round(display.width * 0.72), display.width),
-            height: alignedWithinBounds(Math.round(display.height * 0.72), display.height),
-          };
-          await onCaptureRegionChange(fallbackRegion);
-          if (shouldStartAfterSelection) {
-            await onSelectionComplete?.(fallbackRegion);
-          }
-          return;
-        }
-
-        // Close any stale picker window before opening a fresh one
+        // Close any stale picker window first
         try {
           const existing = await WebviewWindow.getByLabel(PICKER_WINDOW_LABEL);
-          if (existing) {
-            await existing.close();
-          }
+          if (existing) await existing.close();
         } catch {
-          // Ignore if no prior picker window exists
+          /* ignore */
+        }
+
+        // Immediately hide/minimize the main application window per spec
+        try {
+          await tauriService.minimizeMainWindow();
+        } catch {
+          /* ignore */
         }
 
         let unlistenSelected: (() => void) | null = null;
@@ -89,13 +85,19 @@ export function ScreenRegionPicker({
             void (async () => {
               const region = event.payload.region;
               await onCaptureRegionChange(region);
-              if (shouldStartAfterSelection) {
+              await restoreMain();
+              if (req.startAfter) {
                 await onSelectionComplete?.(region);
               }
             })();
           },
         );
-        unlistenCancelled = await listen("region-picker:cancelled", cleanup);
+
+        unlistenCancelled = await listen("region-picker:cancelled", () => {
+          cleanup();
+          void restoreMain();
+          onCancelled?.();
+        });
 
         const params = new URLSearchParams({
           picker: "1",
@@ -128,26 +130,43 @@ export function ScreenRegionPicker({
           void picker.once("tauri://created", () => resolve());
           void picker.once("tauri://error", (event) => {
             cleanup();
+            void restoreMain();
             reject(event.payload);
           });
         });
-      } catch (e) {
-        setError(String(e));
+      } catch {
+        await restoreMain();
       }
     },
-    [captureRegion, disabled, display, onCaptureRegionChange, onSelectionComplete],
+    [captureRegion, disabled, display, onCancelled, onCaptureRegionChange, onSelectionComplete, restoreMain],
   );
 
   useEffect(() => {
     if (!pickRequest || pickRequest.id === handledRequestId.current) return;
     handledRequestId.current = pickRequest.id;
-    void beginPicking(pickRequest.startAfter);
+    void beginPicking(pickRequest);
   }, [beginPicking, pickRequest]);
 
-  if (!error) return null;
+  if (!browserOverlayRequest || !display) return null;
+
   return (
-    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-300">
-      {error}
-    </div>
+    <InlineRegionOverlay
+      display={display}
+      initialRegion={captureRegion}
+      onConfirm={(region) => {
+        const startAfter = browserOverlayRequest.startAfter;
+        setBrowserOverlayRequest(null);
+        void (async () => {
+          await onCaptureRegionChange(region);
+          if (startAfter) {
+            await onSelectionComplete?.(region);
+          }
+        })();
+      }}
+      onCancel={() => {
+        setBrowserOverlayRequest(null);
+        onCancelled?.();
+      }}
+    />
   );
 }

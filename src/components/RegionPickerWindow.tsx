@@ -163,11 +163,9 @@ export function RegionPickerWindow() {
     const cy = clamp(event.clientY, 0, window.innerHeight);
 
     if (drag.mode === "new") {
-      const x = Math.min(drag.startX, cx);
-      const y = Math.min(drag.startY, cy);
       setSelection({
-        x,
-        y,
+        x: Math.min(drag.startX, cx),
+        y: Math.min(drag.startY, cy),
         width: Math.abs(cx - drag.startX),
         height: Math.abs(cy - drag.startY),
       });
@@ -178,12 +176,10 @@ export function RegionPickerWindow() {
     if (!orig) return;
 
     if (drag.mode === "move") {
-      const dx = cx - drag.startX;
-      const dy = cy - drag.startY;
       setSelection({
         ...orig,
-        x: clamp(orig.x + dx, 0, Math.max(0, window.innerWidth - orig.width)),
-        y: clamp(orig.y + dy, 0, Math.max(0, window.innerHeight - orig.height)),
+        x: clamp(orig.x + (cx - drag.startX), 0, Math.max(0, window.innerWidth - orig.width)),
+        y: clamp(orig.y + (cy - drag.startY), 0, Math.max(0, window.innerHeight - orig.height)),
       });
       return;
     }
@@ -198,12 +194,7 @@ export function RegionPickerWindow() {
     if (drag.mode.includes("n")) top = Math.min(cy, bottom - MIN_SELECTION_SIZE);
     if (drag.mode.includes("s")) bottom = Math.max(cy, top + MIN_SELECTION_SIZE);
 
-    setSelection({
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
-    });
+    setSelection({ x: left, y: top, width: right - left, height: bottom - top });
   };
 
   const onPointerUp = () => {
@@ -220,37 +211,52 @@ export function RegionPickerWindow() {
     }
   };
 
-  const alignedPreview = selection && selection.width >= MIN_SELECTION_SIZE && selection.height >= MIN_SELECTION_SIZE
-    ? toAlignedRegion(selection)
-    : null;
+  const alignedPreview =
+    selection && selection.width >= MIN_SELECTION_SIZE && selection.height >= MIN_SELECTION_SIZE
+      ? toAlignedRegion(selection)
+      : null;
 
-  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 64 : true;
+  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 68 : true;
 
   return (
     <div
-      className="rf-region-picker rf-region-picker-window"
+      className="rf-region-picker"
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(e) => startDrag(e, "new")}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {!selection && (
-        <div className="rf-region-picker-hint">
-          Drag to select the recording area · Press Esc to cancel
+      <div
+        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-4 py-2 text-xs font-medium shadow-2xl"
+        style={{
+          background: "rgba(12, 14, 20, 0.92)",
+          border: "1px solid rgba(255,255,255,0.16)",
+          color: "#f4f4f5",
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <span>Click and drag to select capture area</span>
+        <span className="opacity-40">·</span>
+        <span className="font-mono text-[11px] opacity-80">Esc to cancel</span>
+        <button
+          type="button"
+          onClick={() => void cancel()}
+          className="ml-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+          style={{ background: "rgba(255,255,255,0.14)", color: "#ffffff" }}
+        >
+          Cancel
+        </button>
+      </div>
+
+      {error && (
+        <div
+          className="fixed left-1/2 top-20 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-medium shadow-xl"
+          style={{ background: "rgba(220, 38, 38, 0.92)", color: "#ffffff" }}
+        >
+          {error}
         </div>
       )}
-
-      <button
-        className="rf-region-picker-cancel"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => void cancel()}
-        type="button"
-      >
-        Cancel (Esc)
-      </button>
-
-      {error && <div className="rf-region-picker-error">{error}</div>}
 
       {selection && selection.width > 4 && selection.height > 4 && (
         <div
@@ -264,7 +270,6 @@ export function RegionPickerWindow() {
           onPointerDown={(e) => startDrag(e, "move")}
         >
           <div className="rf-region-picker-grid" />
-
           {HANDLES.map((h) => (
             <div
               key={h.id}
@@ -277,23 +282,36 @@ export function RegionPickerWindow() {
           {alignedPreview && (
             <div
               className="rf-region-toolbar"
-              style={toolbarBelow ? { top: "calc(100% + 10px)" } : { bottom: "calc(100% + 10px)" }}
+              style={toolbarBelow ? { top: "calc(100% + 12px)" } : { bottom: "calc(100% + 12px)" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <span className="inline-flex h-8 items-center rounded-lg border border-white/15 bg-zinc-950/90 px-2.5 font-mono text-xs font-medium text-sky-300 shadow-lg">
+              <span
+                className="inline-flex h-8 items-center rounded-lg px-2.5 font-mono text-xs font-semibold shadow-lg"
+                style={{
+                  background: "rgba(12, 13, 18, 0.94)",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  color: "var(--accent)",
+                }}
+              >
                 {alignedPreview.width} × {alignedPreview.height}
               </span>
               <button
                 type="button"
                 onClick={() => void confirm()}
-                className="h-8 rounded-lg bg-sky-400 px-3.5 text-xs font-semibold text-zinc-950 shadow-lg transition-colors hover:bg-sky-300"
+                className="h-8 rounded-lg px-3.5 text-xs font-semibold shadow-lg"
+                style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
               >
                 Use this area (Enter)
               </button>
               <button
                 type="button"
                 onClick={() => void cancel()}
-                className="h-8 rounded-lg border border-white/15 bg-zinc-950/90 px-3 text-xs font-medium text-zinc-200 shadow-lg transition-colors hover:bg-zinc-800"
+                className="h-8 rounded-lg px-3 text-xs font-medium shadow-lg"
+                style={{
+                  background: "rgba(12, 13, 18, 0.92)",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  color: "#e4e4e7",
+                }}
               >
                 Cancel
               </button>

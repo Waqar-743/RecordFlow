@@ -1,18 +1,27 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="graphite">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/recordflow.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RecordFlow — Screen &amp; Camera Recorder</title>
+    <title>RecordFlow</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("recordflow.theme.v2") || "graphite";
+          document.documentElement.dataset.theme = t;
+          document.documentElement.style.colorScheme =
+            t === "paper" || t === "daylight" ? "light" : "dark";
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
   </head>
-
-  <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
