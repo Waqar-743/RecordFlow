@@ -8,7 +8,6 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITH
 const HNS_PER_SEC: i64 = 10_000_000; // 100-ns units
 
 fn duration_to_hns(d: Duration) -> i64 {
-    // 1 hns = 100ns
     let hns = (d.as_nanos() / 100) as i128;
     i64::try_from(hns).unwrap_or(i64::MAX)
 }
@@ -40,6 +39,185 @@ pub struct VideoEncoder {
     mf_started: bool,
 }
 
+fn create_sink_writer(
+    output_path: &str,
+    width: u32,
+    height: u32,
+    fps: u32,
+    bitrate_kbps: u32,
+    audio_sample_rate: Option<u32>,
+    audio_channels: Option<u16>,
+    enable_hardware: bool,
+) -> Result<(IMFSinkWriter, u32, Option<u32>), RecorderError> {
+    let url = HSTRING::from(output_path);
+    let url = PCWSTR(url.as_ptr());
+
+    let mut attrs: Option<IMFAttributes> = None;
+    unsafe {
+        MFCreateAttributes(&mut attrs, 2)
+            .map_err(|e| win_err("MFCreateAttributes failed", e))?;
+    }
+    let attrs = attrs
+        .ok_or_else(|| RecorderError::encoding_failed("MFCreateAttributes returned null"))?;
+
+    let _ = unsafe {
+        attrs.SetUINT32(
+            &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
+            if enable_hardware { 1 } else { 0 },
+        )
+    };
+    let _ = unsafe { attrs.SetUINT32(&MF_LOW_LATENCY, 1) };
+
+    let writer = unsafe {
+        MFCreateSinkWriterFromURL(url, None, Some(&attrs))
+            .map_err(|e| win_err("MFCreateSinkWriterFromURL failed", e))?
+    };
+
+    // Video output (H.264)
+    let video_out =
+        unsafe { MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(video_out)", e))? };
+    unsafe {
+        video_out
+            .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+            .map_err(|e| win_err("SetGUID(video_out.major)", e))?;
+        video_out
+            .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)
+            .map_err(|e| win_err("SetGUID(video_out.subtype)", e))?;
+        video_out
+            .SetUINT32(&MF_MT_AVG_BITRATE, bitrate_kbps.saturating_mul(1000))
+            .map_err(|e| win_err("SetUINT32(video_out.bitrate)", e))?;
+        video_out
+            .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+            .map_err(|e| win_err("SetUINT32(video_out.interlace)", e))?;
+        video_out
+            .SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(width, height))
+            .map_err(|e| win_err("SetUINT64(video_out.frame_size)", e))?;
+        video_out
+            .SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(fps.max(1), 1))
+            .map_err(|e| win_err("SetUINT64(video_out.frame_rate)", e))?;
+        video_out
+            .SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack_u32_pair(1, 1))
+            .map_err(|e| win_err("SetUINT64(video_out.par)", e))?;
+    }
+
+    let video_stream = unsafe {
+        writer
+            .AddStream(&video_out)
+            .map_err(|e| win_err("AddStream(video)", e))?
+    };
+
+    // Video input (ARGB32 ~= BGRA in memory)
+    let video_in =
+        unsafe { MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(video_in)", e))? };
+    unsafe {
+        video_in
+            .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+            .map_err(|e| win_err("SetGUID(video_in.major)", e))?;
+        video_in
+            .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_ARGB32)
+            .map_err(|e| win_err("SetGUID(video_in.subtype)", e))?;
+        video_in
+            .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
+            .map_err(|e| win_err("SetUINT32(video_in.interlace)", e))?;
+        video_in
+            .SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(width, height))
+            .map_err(|e| win_err("SetUINT64(video_in.frame_size)", e))?;
+        video_in
+            .SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(fps.max(1), 1))
+            .map_err(|e| win_err("SetUINT64(video_in.frame_rate)", e))?;
+        video_in
+            .SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack_u32_pair(1, 1))
+            .map_err(|e| win_err("SetUINT64(video_in.par)", e))?;
+        video_in
+            .SetUINT32(&MF_MT_DEFAULT_STRIDE, width.saturating_mul(4))
+            .map_err(|e| win_err("SetUINT32(video_in.stride)", e))?;
+
+        writer
+            .SetInputMediaType(video_stream, &video_in, None)
+            .map_err(|e| win_err("SetInputMediaType(video)", e))?;
+    }
+
+    // Optional audio (AAC-LC)
+    let mut audio_stream: Option<u32> = None;
+    if let (Some(sr), Some(ch)) = (audio_sample_rate, audio_channels) {
+        let audio_out = unsafe {
+            MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(audio_out)", e))?
+        };
+        unsafe {
+            audio_out
+                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
+                .map_err(|e| win_err("SetGUID(audio_out.major)", e))?;
+            audio_out
+                .SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_AAC)
+                .map_err(|e| win_err("SetGUID(audio_out.subtype)", e))?;
+            audio_out
+                .SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, sr)
+                .map_err(|e| win_err("SetUINT32(audio_out.sample_rate)", e))?;
+            audio_out
+                .SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, ch as u32)
+                .map_err(|e| win_err("SetUINT32(audio_out.channels)", e))?;
+
+            let aac_bps: u32 = if ch <= 1 { 128_000 } else { 192_000 };
+            audio_out
+                .SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, aac_bps / 8)
+                .map_err(|e| win_err("SetUINT32(audio_out.avg_bytes_per_sec)", e))?;
+            let _ = audio_out.SetUINT32(&MF_MT_AAC_PAYLOAD_TYPE, 0);
+            let _ = audio_out.SetUINT32(&MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29);
+        }
+
+        let stream_idx = unsafe {
+            writer
+                .AddStream(&audio_out)
+                .map_err(|e| win_err("AddStream(audio)", e))?
+        };
+
+        let audio_in = unsafe {
+            MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(audio_in)", e))?
+        };
+        unsafe {
+            audio_in
+                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
+                .map_err(|e| win_err("SetGUID(audio_in.major)", e))?;
+            audio_in
+                .SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)
+                .map_err(|e| win_err("SetGUID(audio_in.subtype)", e))?;
+            audio_in
+                .SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, sr)
+                .map_err(|e| win_err("SetUINT32(audio_in.sample_rate)", e))?;
+            audio_in
+                .SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, ch as u32)
+                .map_err(|e| win_err("SetUINT32(audio_in.channels)", e))?;
+            audio_in
+                .SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)
+                .map_err(|e| win_err("SetUINT32(audio_in.bits_per_sample)", e))?;
+            let block_align = (ch as u32).saturating_mul(2);
+            audio_in
+                .SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, block_align)
+                .map_err(|e| win_err("SetUINT32(audio_in.block_align)", e))?;
+            audio_in
+                .SetUINT32(
+                    &MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
+                    sr.saturating_mul(block_align),
+                )
+                .map_err(|e| win_err("SetUINT32(audio_in.avg_bytes_per_sec)", e))?;
+
+            writer
+                .SetInputMediaType(stream_idx, &audio_in, None)
+                .map_err(|e| win_err("SetInputMediaType(audio)", e))?;
+        }
+
+        audio_stream = Some(stream_idx);
+    }
+
+    unsafe {
+        writer
+            .BeginWriting()
+            .map_err(|e| win_err("BeginWriting", e))?;
+    }
+
+    Ok((writer, video_stream, audio_stream))
+}
+
 impl VideoEncoder {
     pub fn new(
         output_path: &str,
@@ -49,13 +227,10 @@ impl VideoEncoder {
         bitrate_kbps: u32,
         audio_cfg: Option<(u32, u16)>,
     ) -> Result<Self, RecorderError> {
-        // Try to initialize COM - if it's already initialized with a different mode,
-        // that's okay, we'll just use the existing initialization
         let com_inited = unsafe {
             match CoInitializeEx(None, COINIT_MULTITHREADED).ok() {
                 Ok(()) => true,
                 Err(e) if e.code() == RPC_E_CHANGED_MODE => {
-                    // COM already initialized with different threading mode - that's fine
                     eprintln!("RecordFlow: COM already initialized, using existing initialization");
                     false
                 }
@@ -72,168 +247,50 @@ impl VideoEncoder {
             .map(|(sr, ch)| (Some(sr.max(1)), Some(ch.max(1))))
             .unwrap_or((None, None));
 
-        let url = HSTRING::from(output_path);
-        let url = PCWSTR(url.as_ptr());
-
-        let mut attrs: Option<IMFAttributes> = None;
-        unsafe {
-            MFCreateAttributes(&mut attrs, 1)
-                .map_err(|e| win_err("MFCreateAttributes failed", e))?;
-        }
-        let attrs = attrs
-            .ok_or_else(|| RecorderError::encoding_failed("MFCreateAttributes returned null"))?;
-        // Software transforms are more tolerant of custom region dimensions.
-        let _ = unsafe { attrs.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0) };
-
-        let writer = unsafe {
-            MFCreateSinkWriterFromURL(url, None, Some(&attrs))
-                .map_err(|e| win_err("MFCreateSinkWriterFromURL failed", e))?
-        };
-
-        // Video output (H.264)
-        let video_out =
-            unsafe { MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(video_out)", e))? };
-        unsafe {
-            video_out
-                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
-                .map_err(|e| win_err("SetGUID(video_out.major)", e))?;
-            video_out
-                .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)
-                .map_err(|e| win_err("SetGUID(video_out.subtype)", e))?;
-            video_out
-                .SetUINT32(&MF_MT_AVG_BITRATE, bitrate_kbps.saturating_mul(1000))
-                .map_err(|e| win_err("SetUINT32(video_out.bitrate)", e))?;
-            video_out
-                .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-                .map_err(|e| win_err("SetUINT32(video_out.interlace)", e))?;
-            video_out
-                .SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(width, height))
-                .map_err(|e| win_err("SetUINT64(video_out.frame_size)", e))?;
-            video_out
-                .SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(fps.max(1), 1))
-                .map_err(|e| win_err("SetUINT64(video_out.frame_rate)", e))?;
-            video_out
-                .SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack_u32_pair(1, 1))
-                .map_err(|e| win_err("SetUINT64(video_out.par)", e))?;
-        }
-
-        let video_stream = unsafe {
-            writer
-                .AddStream(&video_out)
-                .map_err(|e| win_err("AddStream(video)", e))?
-        };
-
-        // Video input (ARGB32 ~= BGRA in memory)
-        let video_in =
-            unsafe { MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(video_in)", e))? };
-        unsafe {
-            video_in
-                .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
-                .map_err(|e| win_err("SetGUID(video_in.major)", e))?;
-            video_in
-                .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_ARGB32)
-                .map_err(|e| win_err("SetGUID(video_in.subtype)", e))?;
-            video_in
-                .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
-                .map_err(|e| win_err("SetUINT32(video_in.interlace)", e))?;
-            video_in
-                .SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(width, height))
-                .map_err(|e| win_err("SetUINT64(video_in.frame_size)", e))?;
-            video_in
-                .SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(fps.max(1), 1))
-                .map_err(|e| win_err("SetUINT64(video_in.frame_rate)", e))?;
-            video_in
-                .SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pack_u32_pair(1, 1))
-                .map_err(|e| win_err("SetUINT64(video_in.par)", e))?;
-            video_in
-                .SetUINT32(&MF_MT_DEFAULT_STRIDE, width.saturating_mul(4))
-                .map_err(|e| win_err("SetUINT32(video_in.stride)", e))?;
-
-            writer
-                .SetInputMediaType(video_stream, &video_in, None)
-                .map_err(|e| win_err("SetInputMediaType(video)", e))?;
-        }
-
-        // Optional audio
-        let mut audio_stream: Option<u32> = None;
-        if let (Some(sr), Some(ch)) = (audio_sample_rate, audio_channels) {
-            let audio_out = unsafe {
-                MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(audio_out)", e))?
-            };
-            unsafe {
-                audio_out
-                    .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
-                    .map_err(|e| win_err("SetGUID(audio_out.major)", e))?;
-                audio_out
-                    .SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_AAC)
-                    .map_err(|e| win_err("SetGUID(audio_out.subtype)", e))?;
-
-                audio_out
-                    .SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, sr)
-                    .map_err(|e| win_err("SetUINT32(audio_out.sample_rate)", e))?;
-                audio_out
-                    .SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, ch as u32)
-                    .map_err(|e| win_err("SetUINT32(audio_out.channels)", e))?;
-
-                // Conservative defaults for AAC-LC.
-                // Avg bytes/sec ~= 128kbps mono / 192kbps stereo.
-                let aac_bps: u32 = if ch <= 1 { 128_000 } else { 192_000 };
-                audio_out
-                    .SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, aac_bps / 8)
-                    .map_err(|e| win_err("SetUINT32(audio_out.avg_bytes_per_sec)", e))?;
-                let _ = audio_out.SetUINT32(&MF_MT_AAC_PAYLOAD_TYPE, 0);
-                let _ = audio_out.SetUINT32(&MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29);
+        // Try hardware-accelerated Media Foundation H.264 first (much lower CPU at 1080p60),
+        // then cleanly fall back to software transforms if hardware rejects custom dimensions.
+        let (writer, video_stream, audio_stream) = match create_sink_writer(
+            output_path,
+            width,
+            height,
+            fps,
+            bitrate_kbps,
+            audio_sample_rate,
+            audio_channels,
+            true,
+        ) {
+            Ok(res) => {
+                eprintln!("RecordFlow: Media Foundation initialized (hardware-accelerated H.264)");
+                res
             }
-
-            let stream_idx = unsafe {
-                writer
-                    .AddStream(&audio_out)
-                    .map_err(|e| win_err("AddStream(audio)", e))?
-            };
-
-            let audio_in = unsafe {
-                MFCreateMediaType().map_err(|e| win_err("MFCreateMediaType(audio_in)", e))?
-            };
-            unsafe {
-                audio_in
-                    .SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)
-                    .map_err(|e| win_err("SetGUID(audio_in.major)", e))?;
-                audio_in
-                    .SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)
-                    .map_err(|e| win_err("SetGUID(audio_in.subtype)", e))?;
-                audio_in
-                    .SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, sr)
-                    .map_err(|e| win_err("SetUINT32(audio_in.sample_rate)", e))?;
-                audio_in
-                    .SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, ch as u32)
-                    .map_err(|e| win_err("SetUINT32(audio_in.channels)", e))?;
-                audio_in
-                    .SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)
-                    .map_err(|e| win_err("SetUINT32(audio_in.bits_per_sample)", e))?;
-                let block_align = (ch as u32).saturating_mul(2);
-                audio_in
-                    .SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, block_align)
-                    .map_err(|e| win_err("SetUINT32(audio_in.block_align)", e))?;
-                audio_in
-                    .SetUINT32(
-                        &MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
-                        sr.saturating_mul(block_align),
-                    )
-                    .map_err(|e| win_err("SetUINT32(audio_in.avg_bytes_per_sec)", e))?;
-
-                writer
-                    .SetInputMediaType(stream_idx, &audio_in, None)
-                    .map_err(|e| win_err("SetInputMediaType(audio)", e))?;
+            Err(hw_err) => {
+                eprintln!(
+                    "RecordFlow: Hardware H.264 init unavailable ({hw_err}), falling back to software encoder"
+                );
+                match create_sink_writer(
+                    output_path,
+                    width,
+                    height,
+                    fps,
+                    bitrate_kbps,
+                    audio_sample_rate,
+                    audio_channels,
+                    false,
+                ) {
+                    Ok(res) => {
+                        eprintln!("RecordFlow: Media Foundation initialized (software H.264)");
+                        res
+                    }
+                    Err(sw_err) => {
+                        let _ = unsafe { MFShutdown() };
+                        if com_inited {
+                            unsafe { CoUninitialize() };
+                        }
+                        return Err(sw_err);
+                    }
+                }
             }
-
-            audio_stream = Some(stream_idx);
-        }
-
-        unsafe {
-            writer
-                .BeginWriting()
-                .map_err(|e| win_err("BeginWriting", e))?;
-        }
+        };
 
         Ok(Self {
             writer,
@@ -435,7 +492,6 @@ impl VideoEncoder {
 
 impl Drop for VideoEncoder {
     fn drop(&mut self) {
-        // Best-effort cleanup.
         let _ = unsafe { self.writer.Finalize() };
         if self.mf_started {
             let _ = unsafe { MFShutdown() };
