@@ -2,6 +2,8 @@ use crate::error::RecorderError;
 use crate::recording::frame_overlay;
 use crate::recording::manager::RecordingManager;
 use crate::recording::status::RecordingStatus;
+use crate::state::app_state::CaptureMode;
+use crate::tray::{show_main_window as tray_show_main, update_tray_indicator};
 use crate::utils::history::save_history;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,16 +26,6 @@ fn set_window_content_protected(
     })
 }
 
-fn show_main_window(app: &tauri::AppHandle) {
-    match main_window(app) {
-        Ok(window) => {
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-        Err(err) => eprintln!("RecordFlow: failed to show main window: {err}"),
-    }
-}
-
 /// Begin recording with the current settings.
 #[tauri::command]
 pub async fn start_recording(
@@ -42,28 +34,44 @@ pub async fn start_recording(
 ) -> Result<String, RecorderError> {
     let window = main_window(&app)?;
     set_window_content_protected(&window, true)?;
-    let _ = window.show();
-    std::thread::sleep(Duration::from_millis(150));
+    let settings = state.inner().state.get_settings();
+
+    if settings.auto_minimize {
+        let _ = window.minimize();
+    } else {
+        let _ = window.show();
+    }
+    std::thread::sleep(Duration::from_millis(120));
 
     let path = match state.inner().start_recording().await {
         Ok(path) => path,
         Err(err) => {
             frame_overlay::hide_recording_frame();
             let _ = set_window_content_protected(&window, true);
-            let _ = window.show();
-            let _ = window.set_focus();
+            tray_show_main(&app);
+            update_tray_indicator(&app, false, false, None);
             return Err(err);
         }
     };
 
-    let _ = window.show();
-    let _ = window.set_focus();
-    let settings = state.inner().state.get_settings();
-    if let Err(err) =
-        frame_overlay::show_recording_frame(settings.selected_display, settings.capture_region.as_ref())
-    {
-        eprintln!("RecordFlow: recording frame overlay failed: {err}");
+    if !settings.auto_minimize {
+        let _ = window.show();
+        let _ = window.set_focus();
     }
+
+    if settings.capture_mode != CaptureMode::Window {
+        let overlay_region = match settings.capture_mode {
+            CaptureMode::Area => settings.capture_region.as_ref(),
+            CaptureMode::Screen | CaptureMode::Window => None,
+        };
+        if let Err(err) =
+            frame_overlay::show_recording_frame(settings.selected_display, overlay_region)
+        {
+            eprintln!("RecordFlow: recording frame overlay failed: {err}");
+        }
+    }
+
+    update_tray_indicator(&app, true, false, None);
     state.inner().start_tick_emitter(app);
     Ok(path)
 }
@@ -76,7 +84,8 @@ pub async fn stop_recording(
 ) -> Result<RecordingStatus, RecorderError> {
     let stop_result = state.inner().stop_recording().await;
     frame_overlay::hide_recording_frame();
-    show_main_window(&app);
+    update_tray_indicator(&app, false, false, None);
+    tray_show_main(&app);
     if let Ok(window) = main_window(&app) {
         let _ = set_window_content_protected(&window, true);
     }
@@ -101,6 +110,7 @@ pub async fn pause_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
     let res = state.inner().pause_recording().await?;
+    update_tray_indicator(&app, true, true, None);
     let _ = app.emit("recording_status", state.inner().snapshot_status());
     Ok(res)
 }
@@ -112,6 +122,7 @@ pub async fn resume_recording(
     state: State<'_, Arc<RecordingManager>>,
 ) -> Result<String, RecorderError> {
     let res = state.inner().resume_recording().await?;
+    update_tray_indicator(&app, true, false, None);
     let _ = app.emit("recording_status", state.inner().snapshot_status());
     Ok(res)
 }

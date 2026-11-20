@@ -1,25 +1,26 @@
+use crate::commands::devices::window_extended_bounds;
 use crate::error::RecorderError;
-use crate::recording::status::RecordingStatus;
-use crate::recording::audio_capturer::MicrophoneCapture;
+use crate::recording::audio_capturer::LiveAudioMixer;
 use crate::recording::camera_capturer::CameraCapturer;
 use crate::recording::compositor::FrameCompositor;
-use crate::recording::screen_capturer::ScreenCapturer;
+use crate::recording::screen_capturer::{CaptureTarget, ScreenCapturer};
+use crate::recording::status::RecordingStatus;
 use crate::recording::video_encoder::VideoEncoder;
-use crate::state::app_state::{AppState, CaptureRegion};
+use crate::state::app_state::{AppState, CaptureMode, CaptureRegion, Resolution};
 use crate::state::history::{SessionStatus, TimerSession};
 use crate::utils::config::get_default_recordings_path;
 use chrono::{Local, Utc};
 use parking_lot::Mutex;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
+use windows_capture::monitor::Monitor;
 
 #[derive(Clone)]
 pub struct RecordingManager {
@@ -55,6 +56,15 @@ fn aligned_dimension_inside(value: u32) -> Result<u32, RecorderError> {
     Ok(aligned)
 }
 
+fn align_even_at_least(value: u32, min_val: u32) -> u32 {
+    let clamped = value.max(min_val);
+    clamped - (clamped % 2)
+}
+
+fn parse_window_id(id: &str) -> Option<isize> {
+    id.trim().strip_prefix("window:").and_then(|s| s.parse::<isize>().ok())
+}
+
 fn normalize_capture_region_for_encoding(
     region: Option<CaptureRegion>,
 ) -> Result<Option<CaptureRegion>, RecorderError> {
@@ -65,6 +75,50 @@ fn normalize_capture_region_for_encoding(
             Ok(capture_region)
         })
         .transpose()
+}
+
+fn resolve_display_native_size(display_index: u32) -> (u32, u32) {
+    Monitor::enumerate()
+        .ok()
+        .and_then(|list| list.get(display_index as usize).cloned())
+        .map(|m| (m.width().unwrap_or(1920), m.height().unwrap_or(1080)))
+        .unwrap_or((1920, 1080))
+}
+
+fn fit_resolution(src_w: u32, src_h: u32, resolution: Resolution) -> (u32, u32) {
+    match resolution {
+        Resolution::P720 => (1280, 720),
+        Resolution::P1080 => (1920, 1080),
+        Resolution::Native => (
+            align_even_at_least(src_w, 64),
+            align_even_at_least(src_h, 64),
+        ),
+    }
+}
+
+fn fit_window_resolution(win_w: u32, win_h: u32, resolution: Resolution) -> (u32, u32) {
+    let max_bounds = match resolution {
+        Resolution::P720 => Some((1280u32, 720u32)),
+        Resolution::P1080 => Some((1920u32, 1080u32)),
+        Resolution::Native => None,
+    };
+
+    let (w, h) = match max_bounds {
+        Some((max_w, max_h)) if win_w > max_w || win_h > max_h => {
+            let scale = (max_w as f64 / win_w.max(1) as f64)
+                .min(max_h as f64 / win_h.max(1) as f64);
+            (
+                (win_w as f64 * scale).round() as u32,
+                (win_h as f64 * scale).round() as u32,
+            )
+        }
+        _ => (win_w, win_h),
+    };
+
+    (
+        align_even_at_least(w, H264_DIMENSION_ALIGNMENT),
+        align_even_at_least(h, H264_DIMENSION_ALIGNMENT),
+    )
 }
 
 impl RecordingManager {
@@ -101,12 +155,13 @@ impl RecordingManager {
         let app_for_task = app.clone();
         let manager = self.clone();
         let handle = tauri::async_runtime::spawn(async move {
-            // Emit quickly so the UI feels responsive, while keeping work minimal.
             let tick = Duration::from_millis(250);
             loop {
                 tokio::time::sleep(tick).await;
 
                 if !*manager.state.is_recording.lock() {
+                    crate::tray::update_tray_indicator(&app_for_task, false, false, None);
+                    let _ = app_for_task.emit("recording_status", manager.snapshot_status());
                     break;
                 }
 
@@ -115,8 +170,6 @@ impl RecordingManager {
         });
 
         *self.tick_task.lock() = Some(handle);
-
-        // Also emit immediately.
         let _ = app.emit("recording_status", self.snapshot_status());
     }
 
@@ -163,13 +216,24 @@ impl RecordingManager {
             ));
         }
 
-        // Prevent double-start without stopping.
+        // Reap any previously finished worker (e.g., if a captured window closed mid-recording).
+        let stale_worker = {
+            let mut guard = self.worker.lock();
+            if guard.as_ref().is_some_and(|h| h.is_finished()) {
+                guard.take()
+            } else {
+                None
+            }
+        };
+        if let Some(handle) = stale_worker {
+            let _ = handle.join();
+        }
+
         if self.worker.lock().is_some() {
             return Err(RecorderError::already_recording());
         }
 
         let path = Self::build_output_path()?;
-
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -189,70 +253,110 @@ impl RecordingManager {
         let handle = std::thread::spawn(move || -> Result<(), RecorderError> {
             let run = (|| -> Result<(), RecorderError> {
                 let settings = state.get_settings();
-                let capture_region = normalize_capture_region_for_encoding(settings.capture_region.clone())?;
-                let selected_output_size = capture_region.as_ref().map(|region| {
-                    (region.width, region.height)
-                });
-                let (w, h) = selected_output_size.unwrap_or_else(|| match settings.resolution {
-                    crate::state::app_state::Resolution::P720 => (1280, 720),
-                    crate::state::app_state::Resolution::P1080 => (1920, 1080),
-                });
 
-                let fps = settings.fps.max(1);
-                
-                eprintln!("RecordFlow: Starting recording with resolution {}x{} @ {}fps", w, h, fps);
-                eprintln!("RecordFlow: Output path: {}", output_path_for_thread);
-
-                let mic = if settings.mic_enabled {
-                    eprintln!("RecordFlow: Initializing microphone: {:?}", settings.microphone_device);
-                    match MicrophoneCapture::new(Some(settings.microphone_device.as_str())) {
-                        Ok(m) => {
-                            eprintln!("RecordFlow: Microphone initialized ({}Hz, {} channels)", m.sample_rate(), m.channels());
-                            Some(m)
-                        },
-                        Err(e) => {
-                            eprintln!("RecordFlow: microphone init failed, continuing without mic: {e}");
-                            None
-                        }
+                let (capture_target, w, h) = match settings.capture_mode {
+                    CaptureMode::Window => {
+                        let win_id = settings.selected_window.as_deref().ok_or_else(|| {
+                            RecorderError::invalid_settings(
+                                "Select a window before starting Window recording.",
+                            )
+                        })?;
+                        let hwnd = parse_window_id(win_id).ok_or_else(|| {
+                            RecorderError::invalid_settings("Invalid window selection.")
+                        })?;
+                        let (_, _, win_w, win_h) =
+                            window_extended_bounds(hwnd).ok_or_else(|| {
+                                RecorderError::device_not_found(
+                                    "Selected window (it may be closed or minimized)",
+                                )
+                            })?;
+                        let (out_w, out_h) = fit_window_resolution(win_w, win_h, settings.resolution);
+                        (CaptureTarget::Window { hwnd }, out_w, out_h)
                     }
-                } else {
-                    eprintln!("RecordFlow: Microphone disabled");
-                    None
+                    CaptureMode::Area => {
+                        let region = normalize_capture_region_for_encoding(
+                            settings.capture_region.clone(),
+                        )?
+                        .ok_or_else(|| {
+                            RecorderError::invalid_settings(
+                                "Select a capture area before starting Area recording.",
+                            )
+                        })?;
+                        let out_w = region.width;
+                        let out_h = region.height;
+                        (
+                            CaptureTarget::Monitor {
+                                display_index: settings.selected_display,
+                                capture_region: Some(region),
+                            },
+                            out_w,
+                            out_h,
+                        )
+                    }
+                    CaptureMode::Screen => {
+                        let (native_w, native_h) =
+                            resolve_display_native_size(settings.selected_display);
+                        let (out_w, out_h) =
+                            fit_resolution(native_w, native_h, settings.resolution);
+                        (
+                            CaptureTarget::Monitor {
+                                display_index: settings.selected_display,
+                                capture_region: None,
+                            },
+                            out_w,
+                            out_h,
+                        )
+                    }
                 };
-                let audio_cfg = mic.as_ref().map(|m| (m.sample_rate(), m.channels()));
+
+                let fps = settings.fps.clamp(15, 60);
+                let bitrate = settings.bitrate.clamp(1500, 30_000);
 
                 eprintln!(
-                    "RecordFlow: Initializing screen capturer for display {} with region {:?}",
-                    settings.selected_display, capture_region
+                    "RecordFlow: Starting {:?} recording {}x{} @ {}fps ({} kbps, cursor={})",
+                    settings.capture_mode, w, h, fps, bitrate, settings.capture_cursor
                 );
-                let mut capturer = ScreenCapturer::new(settings.selected_display, w, h, capture_region)?;
+                eprintln!("RecordFlow: Output path: {}", output_path_for_thread);
+
+                // Initialize live audio mixer (supports mic-only, system-only, or both mixed)
+                let mut audio_mixer = LiveAudioMixer::new(
+                    settings.mic_enabled,
+                    Some(settings.microphone_device.as_str()),
+                    settings.system_audio_enabled,
+                    Some(settings.system_audio_device.as_str()),
+                );
+                let audio_cfg = audio_mixer
+                    .as_ref()
+                    .map(|m| (m.sample_rate(), m.channels()));
+
+                let mut capturer =
+                    ScreenCapturer::new(capture_target, w, h, settings.capture_cursor)?;
                 eprintln!("RecordFlow: Screen capturer initialized successfully");
-                
-                eprintln!("RecordFlow: Initializing video encoder");
+
                 let mut encoder = VideoEncoder::new(
                     &output_path_for_thread,
                     w,
                     h,
                     fps,
-                    settings.bitrate.max(1),
+                    bitrate,
                     audio_cfg,
                 )?;
                 eprintln!("RecordFlow: Video encoder initialized successfully");
 
                 let mut camera = if settings.camera_enabled {
-                    eprintln!("RecordFlow: Initializing camera: {:?}", settings.selected_camera);
                     match CameraCapturer::new(settings.selected_camera.clone()) {
                         Ok(c) => {
-                            eprintln!("RecordFlow: Camera initialized successfully");
+                            eprintln!("RecordFlow: Async camera initialized successfully");
                             Some(c)
-                        },
+                        }
                         Err(e) => {
-                            eprintln!("RecordFlow: camera init failed, continuing without camera: {e}");
+                            eprintln!(
+                                "RecordFlow: camera init failed, continuing without camera: {e}"
+                            );
                             None
                         }
                     }
                 } else {
-                    eprintln!("RecordFlow: Camera disabled");
                     None
                 };
 
@@ -264,8 +368,16 @@ impl RecordingManager {
                 let mut paused_total = Duration::from_secs(0);
                 let mut pause_started: Option<Instant> = None;
                 let mut frame_count: u64 = 0;
-                
+
+                let mut target_closed = false;
+
                 while !stop_flag.load(Ordering::SeqCst) {
+                    if capturer.is_closed() {
+                        eprintln!("RecordFlow: Capture target closed, finalizing recording cleanly");
+                        target_closed = true;
+                        break;
+                    }
+
                     if pause_flag.load(Ordering::SeqCst) {
                         if pause_started.is_none() {
                             pause_started = Some(Instant::now());
@@ -276,16 +388,24 @@ impl RecordingManager {
 
                     if let Some(p) = pause_started.take() {
                         paused_total += p.elapsed();
+                        // Discard audio accumulated while paused so A/V stays synchronized.
+                        if let Some(mixer) = audio_mixer.as_ref() {
+                            mixer.clear_buffers();
+                        }
                     }
 
                     let tick = Instant::now();
-                    let elapsed_recording = tick.duration_since(started_clock).saturating_sub(paused_total);
+                    let elapsed_recording = tick
+                        .duration_since(started_clock)
+                        .saturating_sub(paused_total);
+
                     let mut frame = capturer.capture_frame()?;
 
+                    // Non-blocking camera overlay (never throttles screen FPS)
                     let mut disable_camera = false;
-                    if let Some(cam) = camera.as_mut() {
-                        match cam.capture_frame() {
-                            Ok(cam_frame) => {
+                    if let Some(cam) = camera.as_ref() {
+                        match cam.latest_frame() {
+                            Ok(Some(cam_frame)) => {
                                 if let Err(e) = FrameCompositor::overlay_bgra(
                                     &mut frame.data,
                                     frame.width,
@@ -293,19 +413,22 @@ impl RecordingManager {
                                     &cam_frame.data,
                                     cam_frame.width,
                                     cam_frame.height,
-                                    settings.camera_position.clone(),
-                                    settings.camera_size.clone(),
+                                    settings.camera_position,
+                                    settings.camera_size,
+                                    settings.camera_shape,
+                                    settings.camera_mirror,
                                 ) {
                                     eprintln!(
-                                        "RecordFlow: camera overlay failed, continuing screen recording without camera: {e}"
+                                        "RecordFlow: camera overlay failed, disabling camera: {e}"
                                     );
                                     disable_camera = true;
                                 }
                             }
+                            Ok(None) => {
+                                // Camera warming up for its first frame; keep encoding screen smoothly.
+                            }
                             Err(e) => {
-                                eprintln!(
-                                    "RecordFlow: camera frame failed, continuing screen recording without camera: {e}"
-                                );
+                                eprintln!("RecordFlow: camera stream error, disabling camera: {e}");
                                 disable_camera = true;
                             }
                         }
@@ -317,20 +440,31 @@ impl RecordingManager {
                         camera = None;
                     }
 
-                    if let Some(mic) = mic.as_ref() {
+                    if let Some(mixer) = audio_mixer.as_mut() {
                         let sample_count = encoder
                             .audio_samples_needed_for_elapsed(elapsed_recording)
                             .unwrap_or(0);
-                        let audio_pcm = mic.take_pcm_bytes_le(sample_count, settings.mic_volume);
-                        encoder.encode_frame_with_audio(&frame.data, elapsed_recording, &audio_pcm)?;
+                        let audio_pcm = mixer.take_mixed_pcm_bytes_le(
+                            sample_count,
+                            settings.mic_volume,
+                            settings.system_audio_volume,
+                        );
+                        encoder.encode_frame_with_audio(
+                            &frame.data,
+                            elapsed_recording,
+                            &audio_pcm,
+                        )?;
                     } else {
                         encoder.encode_frame(&frame.data, elapsed_recording)?;
                     }
 
                     frame_count += 1;
-                    // Log progress every 30 frames (once per second at 30fps)
-                    if frame_count % 30 == 0 {
-                        eprintln!("RecordFlow: Encoded {} frames ({:.1}s)", frame_count, elapsed_recording.as_secs_f64());
+                    if frame_count % (fps as u64) == 0 {
+                        eprintln!(
+                            "RecordFlow: Encoded {} frames ({:.1}s)",
+                            frame_count,
+                            elapsed_recording.as_secs_f64()
+                        );
                     }
 
                     let elapsed = tick.elapsed();
@@ -346,6 +480,12 @@ impl RecordingManager {
                 }
                 eprintln!("RecordFlow: Finalizing video encoder...");
                 encoder.finalize()?;
+                if target_closed {
+                    crate::recording::frame_overlay::hide_recording_frame();
+                    stop_flag.store(true, Ordering::SeqCst);
+                    *state.is_recording.lock() = false;
+                    *state.is_paused.lock() = false;
+                }
                 eprintln!("RecordFlow: Recording completed successfully");
                 Ok(())
             })();
@@ -362,7 +502,7 @@ impl RecordingManager {
             run
         });
 
-        match ready_rx.recv_timeout(Duration::from_secs(3)) {
+        match ready_rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Ok(())) => {
                 self.state.start_recording(output_path.clone())?;
                 self.begin_session();
@@ -375,14 +515,16 @@ impl RecordingManager {
                 Err(e)
             }
             Err(_) => {
-                // If the thread is still alive, assume it's still initializing.
-                // If it's dead, it failed during initialization.
                 if handle.is_finished() {
                     let res = handle.join();
                     match res {
                         Ok(Err(e)) => Err(e),
-                        Ok(Ok(())) => Err(RecorderError::encoding_failed("Worker exited unexpectedly during startup")),
-                        Err(_) => Err(RecorderError::encoding_failed("Worker thread panicked during startup")),
+                        Ok(Ok(())) => Err(RecorderError::encoding_failed(
+                            "Worker exited unexpectedly during startup",
+                        )),
+                        Err(_) => Err(RecorderError::encoding_failed(
+                            "Worker thread panicked during startup",
+                        )),
                     }
                 } else {
                     self.state.start_recording(output_path.clone())?;
@@ -412,8 +554,6 @@ impl RecordingManager {
             }
         }
 
-        // Even if the worker failed and already marked the state as stopped, we still want to
-        // capture a history entry and clean up internal timers.
         let status = if worker_error.is_some() {
             SessionStatus::Failed
         } else {
