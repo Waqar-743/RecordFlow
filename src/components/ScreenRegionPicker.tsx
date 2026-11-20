@@ -1,17 +1,21 @@
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauriApp } from "../services/tauri.service";
 import type { CaptureRegion, DisplayInfo } from "../types";
+
+export type AreaPickRequest = {
+  id: number;
+  startAfter: boolean;
+};
 
 type Props = {
   display: DisplayInfo | null;
   captureRegion: CaptureRegion | null;
   disabled?: boolean;
-  showControls?: boolean;
-  selectionRequestId?: number;
+  pickRequest: AreaPickRequest | null;
   onCaptureRegionChange: (region: CaptureRegion | null) => Promise<void>;
-  onSelectionComplete?: (region: CaptureRegion | null) => Promise<void>;
+  onSelectionComplete?: (region: CaptureRegion) => Promise<void>;
 };
 
 const PICKER_WINDOW_LABEL = "region-picker";
@@ -28,147 +32,122 @@ function alignedWithinBounds(value: number, maxValue: number): number {
   );
 }
 
-function formatRegion(region: CaptureRegion | null, display: DisplayInfo | null): string {
-  if (!region) {
-    return display ? `${display.width}x${display.height} full display` : "Full display";
-  }
-
-  return `${region.width}x${region.height} at ${region.x}, ${region.y}`;
-}
-
 export function ScreenRegionPicker({
   display,
   captureRegion,
   disabled = false,
-  showControls = true,
-  selectionRequestId = 0,
+  pickRequest,
   onCaptureRegionChange,
   onSelectionComplete,
 }: Props) {
-  const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const handledSelectionRequest = useRef(selectionRequestId);
+  const handledRequestId = useRef<number>(0);
 
-  const beginPicking = async (shouldStartAfterSelection = false) => {
-    if (!display || disabled) return;
+  const beginPicking = useCallback(
+    async (shouldStartAfterSelection: boolean) => {
+      if (!display || disabled) return;
+      setError(null);
 
-    setError(null);
-    setIsPreparing(true);
-
-    try {
-      if (!isTauriApp()) {
-        const fallbackRegion = {
-          x: 0,
-          y: 0,
-          width: alignedWithinBounds(Math.round(display.width * 0.75), display.width),
-          height: alignedWithinBounds(Math.round(display.height * 0.75), display.height),
-        };
-        await onCaptureRegionChange(fallbackRegion);
-        if (shouldStartAfterSelection) {
-          await onSelectionComplete?.(fallbackRegion);
+      try {
+        if (!isTauriApp()) {
+          const fallbackRegion: CaptureRegion = {
+            x: Math.round(display.width * 0.12),
+            y: Math.round(display.height * 0.12),
+            width: alignedWithinBounds(Math.round(display.width * 0.72), display.width),
+            height: alignedWithinBounds(Math.round(display.height * 0.72), display.height),
+          };
+          await onCaptureRegionChange(fallbackRegion);
+          if (shouldStartAfterSelection) {
+            await onSelectionComplete?.(fallbackRegion);
+          }
+          return;
         }
-        return;
-      }
 
-      let unlistenSelected: (() => void) | null = null;
-      let unlistenCancelled: (() => void) | null = null;
-      const cleanup = () => {
-        unlistenSelected?.();
-        unlistenCancelled?.();
-        unlistenSelected = null;
-        unlistenCancelled = null;
-      };
+        // Close any stale picker window before opening a fresh one
+        try {
+          const existing = await WebviewWindow.getByLabel(PICKER_WINDOW_LABEL);
+          if (existing) {
+            await existing.close();
+          }
+        } catch {
+          // Ignore if no prior picker window exists
+        }
 
-      unlistenSelected = await listen<{ region: CaptureRegion }>(
-        "region-picker:selected",
-        (event) => {
-          cleanup();
-          void (async () => {
-            const region = event.payload.region;
-            await onCaptureRegionChange(region);
-            if (shouldStartAfterSelection) {
-              await onSelectionComplete?.(region);
-            }
-          })();
-        },
-      );
-      unlistenCancelled = await listen("region-picker:cancelled", cleanup);
+        let unlistenSelected: (() => void) | null = null;
+        let unlistenCancelled: (() => void) | null = null;
+        const cleanup = () => {
+          unlistenSelected?.();
+          unlistenCancelled?.();
+          unlistenSelected = null;
+          unlistenCancelled = null;
+        };
 
-      const picker = new WebviewWindow(PICKER_WINDOW_LABEL, {
-        url: `/?picker=1&displayWidth=${display.width}&displayHeight=${display.height}`,
-        x: display.x,
-        y: display.y,
-        width: display.width,
-        height: display.height,
-        decorations: false,
-        resizable: false,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        transparent: true,
-        visible: true,
-        focus: true,
-      });
+        unlistenSelected = await listen<{ region: CaptureRegion }>(
+          "region-picker:selected",
+          (event) => {
+            cleanup();
+            void (async () => {
+              const region = event.payload.region;
+              await onCaptureRegionChange(region);
+              if (shouldStartAfterSelection) {
+                await onSelectionComplete?.(region);
+              }
+            })();
+          },
+        );
+        unlistenCancelled = await listen("region-picker:cancelled", cleanup);
 
-      await new Promise<void>((resolve, reject) => {
-        void picker.once("tauri://created", () => resolve());
-        void picker.once("tauri://error", (event) => {
-          cleanup();
-          reject(event.payload);
+        const params = new URLSearchParams({
+          picker: "1",
+          displayWidth: String(display.width),
+          displayHeight: String(display.height),
         });
-      });
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setIsPreparing(false);
-    }
-  };
+        if (captureRegion) {
+          params.set("initX", String(captureRegion.x));
+          params.set("initY", String(captureRegion.y));
+          params.set("initW", String(captureRegion.width));
+          params.set("initH", String(captureRegion.height));
+        }
 
-  const useFullDisplay = async () => {
-    setError(null);
-    await onCaptureRegionChange(null);
-  };
+        const picker = new WebviewWindow(PICKER_WINDOW_LABEL, {
+          url: `/?${params.toString()}`,
+          x: display.x,
+          y: display.y,
+          width: display.width,
+          height: display.height,
+          decorations: false,
+          resizable: false,
+          alwaysOnTop: true,
+          skipTaskbar: true,
+          transparent: true,
+          visible: true,
+          focus: true,
+        });
 
+        await new Promise<void>((resolve, reject) => {
+          void picker.once("tauri://created", () => resolve());
+          void picker.once("tauri://error", (event) => {
+            cleanup();
+            reject(event.payload);
+          });
+        });
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [captureRegion, disabled, display, onCaptureRegionChange, onSelectionComplete],
+  );
 
   useEffect(() => {
-    if (!selectionRequestId || selectionRequestId === handledSelectionRequest.current) return;
+    if (!pickRequest || pickRequest.id === handledRequestId.current) return;
+    handledRequestId.current = pickRequest.id;
+    void beginPicking(pickRequest.startAfter);
+  }, [beginPicking, pickRequest]);
 
-    handledSelectionRequest.current = selectionRequestId;
-    void beginPicking(true);
-  }, [selectionRequestId, display, disabled]);
-
-  if (!showControls) {
-    return error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null;
-  }
-
+  if (!error) return null;
   return (
-    <div className="mt-4 border-t border-gray-100 pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-bold text-gray-400 uppercase">Capture Area</div>
-          <div className="text-sm font-medium text-gray-800">{formatRegion(captureRegion, display)}</div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={disabled || !display}
-            onClick={() => void useFullDisplay()}
-            type="button"
-          >
-            Full display
-          </button>
-          <button
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={disabled || !display || isPreparing}
-            onClick={() => void beginPicking(false)}
-            type="button"
-          >
-            {isPreparing ? "Opening..." : "Select area"}
-          </button>
-        </div>
-      </div>
-
-      {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
+    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-300">
+      {error}
     </div>
   );
 }
