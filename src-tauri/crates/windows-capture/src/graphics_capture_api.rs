@@ -158,36 +158,6 @@ impl GraphicsCaptureApi {
             return Err(Error::Unsupported);
         }
 
-        if cursor_capture_settings != CursorCaptureSettings::Default
-            && !Self::is_cursor_settings_supported()?
-        {
-            return Err(Error::CursorConfigUnsupported);
-        }
-
-        if draw_border_settings != DrawBorderSettings::Default
-            && !Self::is_border_settings_supported()?
-        {
-            return Err(Error::BorderConfigUnsupported);
-        }
-
-        if secondary_window_settings != SecondaryWindowSettings::Default
-            && !Self::is_secondary_windows_supported()?
-        {
-            return Err(Error::SecondaryWindowsUnsupported);
-        }
-
-        if minimum_update_interval_settings != MinimumUpdateIntervalSettings::Default
-            && !Self::is_minimum_update_interval_supported()?
-        {
-            return Err(Error::MinimumUpdateIntervalUnsupported);
-        }
-
-        if dirty_region_settings != DirtyRegionSettings::Default
-            && !Self::is_dirty_region_supported()?
-        {
-            return Err(Error::DirtyRegionUnsupported);
-        }
-
         // Pre-calculate the title bar height so each frame doesn't need to do it
         let title_bar_height = match item_type {
             CaptureItemTypes::Window(window) => Some(window.title_bar_height()?),
@@ -353,73 +323,73 @@ impl GraphicsCaptureApi {
             }
         }))?;
 
-        if cursor_capture_settings != CursorCaptureSettings::Default {
-            if Self::is_cursor_settings_supported()? {
-                match cursor_capture_settings {
-                    CursorCaptureSettings::Default => (),
-                    CursorCaptureSettings::WithCursor => session.SetIsCursorCaptureEnabled(true)?,
-                    CursorCaptureSettings::WithoutCursor => {
-                        session.SetIsCursorCaptureEnabled(false)?
-                    }
-                };
-            } else {
-                return Err(Error::CursorConfigUnsupported);
+        // Apply optional session properties on a best-effort basis so older Windows 10/11
+        // builds that lack `IsBorderRequired` or `IsCursorCaptureEnabled` never fail capture.
+        if cursor_capture_settings != CursorCaptureSettings::Default
+            && Self::is_cursor_settings_supported().unwrap_or(false)
+        {
+            match cursor_capture_settings {
+                CursorCaptureSettings::Default => (),
+                CursorCaptureSettings::WithCursor => {
+                    let _ = session.SetIsCursorCaptureEnabled(true);
+                }
+                CursorCaptureSettings::WithoutCursor => {
+                    let _ = session.SetIsCursorCaptureEnabled(false);
+                }
+            };
+        }
+
+        if draw_border_settings != DrawBorderSettings::Default
+            && Self::is_border_settings_supported().unwrap_or(false)
+        {
+            match draw_border_settings {
+                DrawBorderSettings::Default => (),
+                DrawBorderSettings::WithBorder => {
+                    let _ = session.SetIsBorderRequired(true);
+                }
+                DrawBorderSettings::WithoutBorder => {
+                    let _ = session.SetIsBorderRequired(false);
+                }
             }
         }
 
-        if draw_border_settings != DrawBorderSettings::Default {
-            if Self::is_border_settings_supported()? {
-                match draw_border_settings {
-                    DrawBorderSettings::Default => (),
-                    DrawBorderSettings::WithBorder => {
-                        session.SetIsBorderRequired(true)?;
-                    }
-                    DrawBorderSettings::WithoutBorder => session.SetIsBorderRequired(false)?,
+        if secondary_window_settings != SecondaryWindowSettings::Default
+            && Self::is_secondary_windows_supported().unwrap_or(false)
+        {
+            match secondary_window_settings {
+                SecondaryWindowSettings::Default => (),
+                SecondaryWindowSettings::Include => {
+                    let _ = session.SetIncludeSecondaryWindows(true);
                 }
-            } else {
-                return Err(Error::BorderConfigUnsupported);
+                SecondaryWindowSettings::Exclude => {
+                    let _ = session.SetIncludeSecondaryWindows(false);
+                }
             }
         }
 
-        if secondary_window_settings != SecondaryWindowSettings::Default {
-            if Self::is_secondary_windows_supported()? {
-                match secondary_window_settings {
-                    SecondaryWindowSettings::Default => (),
-                    SecondaryWindowSettings::Include => session.SetIncludeSecondaryWindows(true)?,
-                    SecondaryWindowSettings::Exclude => {
-                        session.SetIncludeSecondaryWindows(false)?
-                    }
+        if minimum_update_interval_settings != MinimumUpdateIntervalSettings::Default
+            && Self::is_minimum_update_interval_supported().unwrap_or(false)
+        {
+            match minimum_update_interval_settings {
+                MinimumUpdateIntervalSettings::Default => (),
+                MinimumUpdateIntervalSettings::Custom(duration) => {
+                    let _ = session.SetMinUpdateInterval(duration.into());
                 }
-            } else {
-                return Err(Error::SecondaryWindowsUnsupported);
             }
         }
 
-        if minimum_update_interval_settings != MinimumUpdateIntervalSettings::Default {
-            if Self::is_minimum_update_interval_supported()? {
-                match minimum_update_interval_settings {
-                    MinimumUpdateIntervalSettings::Default => (),
-                    MinimumUpdateIntervalSettings::Custom(duration) => {
-                        session.SetMinUpdateInterval(duration.into())?;
-                    }
+        if dirty_region_settings != DirtyRegionSettings::Default
+            && Self::is_dirty_region_supported().unwrap_or(false)
+        {
+            match dirty_region_settings {
+                DirtyRegionSettings::Default => (),
+                DirtyRegionSettings::ReportOnly => {
+                    let _ = session.SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportOnly);
                 }
-            } else {
-                return Err(Error::MinimumUpdateIntervalUnsupported);
-            }
-        }
-
-        if dirty_region_settings != DirtyRegionSettings::Default {
-            if Self::is_dirty_region_supported()? {
-                match dirty_region_settings {
-                    DirtyRegionSettings::Default => (),
-                    DirtyRegionSettings::ReportOnly => {
-                        session.SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportOnly)?
-                    }
-                    DirtyRegionSettings::ReportAndRender => session
-                        .SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportAndRender)?,
+                DirtyRegionSettings::ReportAndRender => {
+                    let _ =
+                        session.SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportAndRender);
                 }
-            } else {
-                return Err(Error::DirtyRegionUnsupported);
             }
         }
 

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame as WcFrame;
-use windows_capture::graphics_capture_api::InternalCaptureControl;
+use windows_capture::graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl};
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -315,10 +315,20 @@ impl ScreenCapturer {
         let src_h = Arc::new(Mutex::new(0u32));
         let closed = Arc::new(AtomicBool::new(false));
 
-        let cursor_setting = if capture_cursor {
+        let cursor_setting = if !GraphicsCaptureApi::is_cursor_settings_supported().unwrap_or(false)
+        {
+            CursorCaptureSettings::Default
+        } else if capture_cursor {
             CursorCaptureSettings::WithCursor
         } else {
             CursorCaptureSettings::WithoutCursor
+        };
+
+        let border_setting = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false)
+        {
+            DrawBorderSettings::WithoutBorder
+        } else {
+            DrawBorderSettings::Default
         };
 
         let control = match target {
@@ -353,7 +363,7 @@ impl ScreenCapturer {
                 let settings = Settings::new(
                     monitor,
                     cursor_setting,
-                    DrawBorderSettings::WithoutBorder,
+                    border_setting,
                     SecondaryWindowSettings::Default,
                     MinimumUpdateIntervalSettings::Default,
                     DirtyRegionSettings::Default,
@@ -381,7 +391,7 @@ impl ScreenCapturer {
                 let settings = Settings::new(
                     window,
                     cursor_setting,
-                    DrawBorderSettings::WithoutBorder,
+                    border_setting,
                     SecondaryWindowSettings::Default,
                     MinimumUpdateIntervalSettings::Default,
                     DirtyRegionSettings::Default,
