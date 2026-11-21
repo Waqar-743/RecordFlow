@@ -9,7 +9,10 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HALFTONE, HMONITOR, MONITORINFOEXW, SRCCOPY,
 };
-use windows::Win32::UI::WindowsAndMessaging::IsIconic;
+use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetWindowRect, IsIconic, IsWindow, PW_RENDERFULLCONTENT,
+};
 use windows_capture::monitor::Monitor;
 use windows_capture::window::Window;
 
@@ -284,8 +287,179 @@ pub async fn get_display_thumbnail(
     )
 }
 
-/// Capture a scaled PNG thumbnail of an application window by cropping its on-screen
-/// bounds. `window_id` uses the `window:<hwnd>` format returned by `get_capture_windows`.
+/// Capture a single application window directly via `PrintWindow(PW_RENDERFULLCONTENT)`
+/// so the thumbnail reflects the selected window's own content even when occluded by
+/// RecordFlow or other windows.
+fn capture_window_png(hwnd: isize, max_width: u32) -> Result<Vec<u8>, RecorderError> {
+    let hwnd_handle = HWND(hwnd as *mut c_void);
+
+    unsafe {
+        if !IsWindow(Some(hwnd_handle)).as_bool() {
+            return Err(RecorderError::device_not_found("Window is no longer open"));
+        }
+        if IsIconic(hwnd_handle).as_bool() {
+            return Err(RecorderError::invalid_settings(
+                "Window is minimized; restore it to show a preview",
+            ));
+        }
+    }
+
+    let mut win_rect = RECT::default();
+    unsafe {
+        GetWindowRect(hwnd_handle, &mut win_rect).map_err(|_| {
+            RecorderError::device_not_found("Window bounds (it may be closed or hidden)")
+        })?;
+    }
+
+    let win_w = (win_rect.right - win_rect.left).max(0) as u32;
+    let win_h = (win_rect.bottom - win_rect.top).max(0) as u32;
+    if win_w < 2 || win_h < 2 {
+        return Err(RecorderError::device_not_found(
+            "Window has empty dimensions",
+        ));
+    }
+
+    // Crop out invisible Windows 10/11 DWM drop-shadow borders when extended bounds are available.
+    let (crop_x, crop_y, crop_w, crop_h) = match window_extended_bounds(hwnd) {
+        Some((ext_left, ext_top, ext_w, ext_h)) => {
+            let cx = (ext_left - win_rect.left).clamp(0, (win_w as i32).saturating_sub(1));
+            let cy = (ext_top - win_rect.top).clamp(0, (win_h as i32).saturating_sub(1));
+            let cw = (ext_w as i32).min(win_w as i32 - cx).max(1) as u32;
+            let ch = (ext_h as i32).min(win_h as i32 - cy).max(1) as u32;
+            (cx, cy, cw, ch)
+        }
+        None => (0, 0, win_w, win_h),
+    };
+
+    let max_width = max_width.max(2);
+    let scale = (max_width as f64 / crop_w as f64).min(1.0);
+    let dst_w = ((crop_w as f64 * scale).round() as u32).max(2);
+    let dst_h = ((crop_h as f64 * scale).round() as u32).max(2);
+
+    let mut pixels = vec![0u8; (dst_w * dst_h * 4) as usize];
+
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return Err(RecorderError::file_error("Could not acquire screen DC"));
+        }
+
+        let full_dc = CreateCompatibleDC(Some(screen));
+        if full_dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return Err(RecorderError::file_error("Could not create window DC"));
+        }
+
+        let full_bitmap = CreateCompatibleBitmap(screen, win_w as i32, win_h as i32);
+        if full_bitmap.is_invalid() {
+            let _ = DeleteDC(full_dc);
+            let _ = ReleaseDC(None, screen);
+            return Err(RecorderError::file_error("Could not create window bitmap"));
+        }
+
+        let prev_full = SelectObject(full_dc, full_bitmap.into());
+
+        // PW_RENDERFULLCONTENT renders DWM/DirectComposition/Chromium/Electron windows
+        // even when covered by RecordFlow or other windows.
+        let mut printed =
+            PrintWindow(hwnd_handle, full_dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        if !printed {
+            printed = PrintWindow(hwnd_handle, full_dc, PRINT_WINDOW_FLAGS(0)).as_bool();
+        }
+
+        let mut copied = false;
+        let mut rows = 0;
+
+        if printed {
+            let dst_dc = CreateCompatibleDC(Some(screen));
+            if !dst_dc.is_invalid() {
+                let dst_bitmap = CreateCompatibleBitmap(screen, dst_w as i32, dst_h as i32);
+                if !dst_bitmap.is_invalid() {
+                    let prev_dst = SelectObject(dst_dc, dst_bitmap.into());
+                    SetStretchBltMode(dst_dc, HALFTONE);
+                    copied = StretchBlt(
+                        dst_dc,
+                        0,
+                        0,
+                        dst_w as i32,
+                        dst_h as i32,
+                        Some(full_dc),
+                        crop_x,
+                        crop_y,
+                        crop_w as i32,
+                        crop_h as i32,
+                        SRCCOPY,
+                    )
+                    .as_bool();
+
+                    if copied {
+                        let mut bmi = BITMAPINFO {
+                            bmiHeader: BITMAPINFOHEADER {
+                                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                                biWidth: dst_w as i32,
+                                biHeight: -(dst_h as i32), // top-down
+                                biPlanes: 1,
+                                biBitCount: 32,
+                                biCompression: BI_RGB.0,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        };
+
+                        rows = GetDIBits(
+                            dst_dc,
+                            dst_bitmap,
+                            0,
+                            dst_h,
+                            Some(pixels.as_mut_ptr() as *mut c_void),
+                            &mut bmi,
+                            DIB_RGB_COLORS,
+                        );
+                    }
+
+                    SelectObject(dst_dc, prev_dst);
+                    let _ = DeleteObject(dst_bitmap.into());
+                }
+                let _ = DeleteDC(dst_dc);
+            }
+        }
+
+        SelectObject(full_dc, prev_full);
+        let _ = DeleteObject(full_bitmap.into());
+        let _ = DeleteDC(full_dc);
+        let _ = ReleaseDC(None, screen);
+
+        if !printed || !copied || rows == 0 {
+            return Err(RecorderError::file_error(
+                "Could not capture window preview",
+            ));
+        }
+    }
+
+    // BGRA -> RGBA opaque
+    for px in pixels.chunks_exact_mut(4) {
+        px.swap(0, 2);
+        px[3] = 255;
+    }
+
+    let mut png_bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut png_bytes, dst_w, dst_h);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| RecorderError::file_error(format!("PNG header error: {e}")))?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|e| RecorderError::file_error(format!("PNG encode error: {e}")))?;
+    }
+
+    Ok(png_bytes)
+}
+
+/// Capture a scaled PNG thumbnail of an application window's own content via PrintWindow.
+/// `window_id` uses the `window:<hwnd>` format returned by `get_capture_windows`.
 #[tauri::command]
 pub async fn get_window_thumbnail(
     window_id: String,
@@ -297,18 +471,10 @@ pub async fn get_window_thumbnail(
         .and_then(|s| s.parse::<isize>().ok())
         .ok_or_else(|| RecorderError::invalid_settings("Invalid window id"))?;
 
-    let is_minimized = unsafe { IsIconic(HWND(hwnd as *mut c_void)).as_bool() };
-    if is_minimized {
-        return Err(RecorderError::invalid_settings(
-            "Window is minimized; restore it to show a preview",
-        ));
-    }
-
-    let (left, top, width, height) = window_extended_bounds(hwnd).ok_or_else(|| {
-        RecorderError::device_not_found("Window bounds (it may be closed or hidden)")
-    })?;
-
-    capture_screen_rect_png(left, top, width, height, clamp_thumbnail_width(max_width))
+    let target_w = clamp_thumbnail_width(max_width);
+    tauri::async_runtime::spawn_blocking(move || capture_window_png(hwnd, target_w))
+        .await
+        .map_err(|e| RecorderError::file_error(format!("Window thumbnail task failed: {e}")))?
 }
 
 /// List capturable application windows (excluding RecordFlow's own windows).

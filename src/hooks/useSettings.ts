@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { tauriService } from "../services/tauri.service";
 import type { RecordingSettings } from "../types";
 
@@ -12,6 +12,7 @@ type UseSettingsResult = {
 
 export function useSettings(): UseSettingsResult {
   const [settings, setSettings] = useState<RecordingSettings | null>(null);
+  const settingsRef = useRef<RecordingSettings | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +22,10 @@ export function useSettings(): UseSettingsResult {
       try {
         setLoading(true);
         const s = await tauriService.getSettings();
-        if (!cancelled) setSettings(s);
+        if (!cancelled) {
+          settingsRef.current = s;
+          setSettings(s);
+        }
       } catch (e) {
         if (!cancelled) setError(String(e));
       } finally {
@@ -34,17 +38,19 @@ export function useSettings(): UseSettingsResult {
   }, []);
 
   const replaceSettings = useCallback(async (next: RecordingSettings) => {
+    settingsRef.current = next;
     setSettings(next);
     await tauriService.updateSettings(next);
   }, []);
 
   const updateSettings = useCallback(
     async (patch: Partial<RecordingSettings>) => {
-      if (!settings) return;
-      const next = { ...settings, ...patch };
+      const current = settingsRef.current;
+      if (!current) return;
+      const next = { ...current, ...patch };
       await replaceSettings(next);
     },
-    [replaceSettings, settings],
+    [replaceSettings],
   );
 
   return { settings, loading, error, updateSettings, replaceSettings };

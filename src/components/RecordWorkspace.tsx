@@ -52,7 +52,10 @@ type Props = {
   windows: WindowInfo[];
   windowThumbnails: Record<string, string>;
   windowsLoading: boolean;
+  windowThumbLoading?: boolean;
   onRefreshWindows: () => void;
+  onSelectWindow: (windowId: string) => void;
+  onRefreshWindowPreview?: (windowId: string) => void;
   onCaptureModeChange: (mode: CaptureMode) => void;
   onPickArea: () => void;
   onSelectAreaDirectly?: (region: CaptureRegion) => void;
@@ -92,7 +95,10 @@ export function RecordWorkspace({
   windows,
   windowThumbnails,
   windowsLoading,
+  windowThumbLoading = false,
   onRefreshWindows,
+  onSelectWindow,
+  onRefreshWindowPreview,
   onCaptureModeChange,
   onPickArea,
   onSelectAreaDirectly,
@@ -600,7 +606,7 @@ export function RecordWorkspace({
                           key={w.id}
                           type="button"
                           disabled={isRecording}
-                          onClick={() => void onUpdateSettings({ selected_window: w.id })}
+                          onClick={() => onSelectWindow(w.id)}
                           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all"
                           style={{
                             background: selected ? "var(--accent-soft)" : "transparent",
@@ -667,8 +673,30 @@ export function RecordWorkspace({
                   </span>
                 </div>
 
+                {/* Top-right Refresh Preview button for selected window */}
+                {activeWindow && onRefreshWindowPreview && (
+                  <div className="absolute right-4 top-4 z-10">
+                    <button
+                      type="button"
+                      disabled={windowThumbLoading}
+                      onClick={() => onRefreshWindowPreview(activeWindow.id)}
+                      title="Refresh selected window preview"
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        background: "var(--surface)",
+                        border: "1px solid var(--border-strong)",
+                        color: "var(--text-2)",
+                      }}
+                    >
+                      <RefreshIcon
+                        className={`h-3.5 w-3.5 ${windowThumbLoading ? "animate-spin" : ""}`}
+                      />
+                    </button>
+                  </div>
+                )}
+
                 {activeWindow ? (
-                  <div className="flex w-full max-w-lg flex-col items-center gap-4">
+                  <div className="flex w-full max-w-lg flex-col items-center gap-3 pt-6">
                     {activeWinThumb ? (
                       <div
                         className="relative w-full overflow-hidden rounded-xl"
@@ -678,9 +706,11 @@ export function RecordWorkspace({
                         }}
                       >
                         <img
+                          key={activeWindow.id}
                           src={activeWinThumb}
                           alt={activeWindow.title}
-                          className="max-h-52 w-full object-contain bg-black/40"
+                          className="w-full object-contain bg-black/40"
+                          style={{ maxHeight: "clamp(110px, 22vh, 210px)" }}
                         />
                       </div>
                     ) : (
@@ -692,13 +722,17 @@ export function RecordWorkspace({
                           color: "var(--accent)",
                         }}
                       >
-                        <AppWindowIcon className="h-9 w-9" />
+                        {windowThumbLoading ? (
+                          <RefreshIcon className="h-7 w-7 animate-spin" />
+                        ) : (
+                          <AppWindowIcon className="h-9 w-9" />
+                        )}
                       </div>
                     )}
 
-                    <div className="text-center">
+                    <div className="w-full text-center">
                       <div
-                        className="max-w-md truncate text-sm font-semibold"
+                        className="mx-auto max-w-md truncate text-sm font-semibold"
                         style={{ color: "var(--text)" }}
                       >
                         {activeWindow.title}
@@ -708,13 +742,15 @@ export function RecordWorkspace({
                           className="rounded-full px-2.5 py-0.5 font-mono text-[11px]"
                           style={{ background: "var(--surface-2)", color: "var(--text-2)" }}
                         >
-                          {activeWindow.process}
+                          {activeWindow.process || "Application"}
                         </span>
                         <span
                           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
                           style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
                         >
-                          Only this window is recorded
+                          {windowThumbLoading && !activeWinThumb
+                            ? "Updating window preview…"
+                            : "Only this window is recorded"}
                         </span>
                       </div>
                     </div>

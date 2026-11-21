@@ -61,7 +61,9 @@ export function StudioApp() {
   const [windows, setWindows] = useState<WindowInfo[]>([]);
   const [windowThumbnails, setWindowThumbnails] = useState<Record<string, string>>({});
   const [windowsLoading, setWindowsLoading] = useState(false);
-  const winThumbUrlsRef = useRef<string[]>([]);
+  const [windowThumbLoadingId, setWindowThumbLoadingId] = useState<string | null>(null);
+  const winThumbUrlsRef = useRef<Map<string, string>>(new Map());
+  const winThumbReqSeqRef = useRef<Record<string, number>>({});
 
   // Area picker & modals
   const [pickRequest, setPickRequest] = useState<AreaPickRequest | null>(null);
@@ -122,44 +124,135 @@ export function StudioApp() {
     }
   }, []);
 
-  const refreshWindowThumbnails = useCallback(async (list: WindowInfo[]) => {
-    const subset = list.slice(0, 8);
-    if (subset.length === 0) return;
-    const results = await Promise.allSettled(
-      subset.map(async (w) => {
-        const bytes = await tauriService.getWindowThumbnail(w.id, 480);
-        const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
-        return [w.id, URL.createObjectURL(blob)] as const;
-      }),
-    );
-    const nextUrls: string[] = [];
-    const nextMap: Record<string, string> = {};
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        const [id, url] = r.value;
-        nextMap[id] = url;
-        nextUrls.push(url);
+  const fetchWindowThumbnail = useCallback(async (windowId: string, maxWidth = 800) => {
+    if (!windowId) return;
+    const seq = (winThumbReqSeqRef.current[windowId] ?? 0) + 1;
+    winThumbReqSeqRef.current[windowId] = seq;
+    setWindowThumbLoadingId(windowId);
+    try {
+      const bytes = await tauriService.getWindowThumbnail(windowId, maxWidth);
+      if (winThumbReqSeqRef.current[windowId] !== seq) return;
+      const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      const prevUrl = winThumbUrlsRef.current.get(windowId);
+      winThumbUrlsRef.current.set(windowId, url);
+      setWindowThumbnails((prev) => ({ ...prev, [windowId]: url }));
+      if (prevUrl && prevUrl !== url) {
+        URL.revokeObjectURL(prevUrl);
       }
+    } catch {
+      if (winThumbReqSeqRef.current[windowId] !== seq) return;
+      // Remove stale thumbnail if the window is minimized or closed
+      const prevUrl = winThumbUrlsRef.current.get(windowId);
+      if (prevUrl) {
+        winThumbUrlsRef.current.delete(windowId);
+        URL.revokeObjectURL(prevUrl);
+      }
+      setWindowThumbnails((prev) => {
+        if (!(windowId in prev)) return prev;
+        const next = { ...prev };
+        delete next[windowId];
+        return next;
+      });
+    } finally {
+      setWindowThumbLoadingId((curr) => (curr === windowId ? null : curr));
     }
-    winThumbUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-    winThumbUrlsRef.current = nextUrls;
-    setWindowThumbnails(nextMap);
   }, []);
 
-  const refreshWindows = useCallback(async () => {
-    setWindowsLoading(true);
-    try {
-      const list = await tauriService.getCaptureWindows();
-      setWindows(list);
-      void refreshWindowThumbnails(list);
-      return list;
-    } catch {
-      setWindows([]);
-      return [];
-    } finally {
-      setWindowsLoading(false);
-    }
-  }, [refreshWindowThumbnails]);
+  const refreshWindowThumbnails = useCallback(
+    async (list: WindowInfo[], priorityWindowId?: string | null) => {
+      if (list.length === 0) {
+        winThumbUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+        winThumbUrlsRef.current.clear();
+        setWindowThumbnails({});
+        return;
+      }
+
+      // Remove thumbnails for windows that are no longer open
+      const validIds = new Set(list.map((w) => w.id));
+      for (const [id, url] of Array.from(winThumbUrlsRef.current.entries())) {
+        if (!validIds.has(id)) {
+          URL.revokeObjectURL(url);
+          winThumbUrlsRef.current.delete(id);
+        }
+      }
+      setWindowThumbnails((prev) => {
+        const cleaned: Record<string, string> = {};
+        for (const [id, url] of Object.entries(prev)) {
+          if (validIds.has(id)) cleaned[id] = url;
+        }
+        return cleaned;
+      });
+
+      // Prioritize the currently selected window, then fetch remaining windows in batches
+      const ordered = priorityWindowId
+        ? [
+            ...list.filter((w) => w.id === priorityWindowId),
+            ...list.filter((w) => w.id !== priorityWindowId),
+          ]
+        : list;
+
+      const subset = ordered.slice(0, 24);
+      const batchSize = 6;
+      for (let i = 0; i < subset.length; i += batchSize) {
+        const batch = subset.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(async (w) => {
+            const width = w.id === priorityWindowId ? 800 : 480;
+            const bytes = await tauriService.getWindowThumbnail(w.id, width);
+            const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+            return [w.id, URL.createObjectURL(blob)] as const;
+          }),
+        );
+        const updates: Record<string, string> = {};
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            const [id, url] = r.value;
+            const prevUrl = winThumbUrlsRef.current.get(id);
+            winThumbUrlsRef.current.set(id, url);
+            updates[id] = url;
+            if (prevUrl && prevUrl !== url) {
+              URL.revokeObjectURL(prevUrl);
+            }
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          setWindowThumbnails((prev) => ({ ...prev, ...updates }));
+        }
+      }
+    },
+    [],
+  );
+
+  const refreshWindows = useCallback(
+    async (priorityWindowId?: string | null) => {
+      setWindowsLoading(true);
+      try {
+        const list = await tauriService.getCaptureWindows();
+        setWindows(list);
+        const targetId =
+          priorityWindowId && list.some((w) => w.id === priorityWindowId)
+            ? priorityWindowId
+            : (list[0]?.id ?? null);
+        void refreshWindowThumbnails(list, targetId);
+        return list;
+      } catch {
+        setWindows([]);
+        return [];
+      } finally {
+        setWindowsLoading(false);
+      }
+    },
+    [refreshWindowThumbnails],
+  );
+
+  const handleSelectWindow = useCallback(
+    (windowId: string) => {
+      void updateSettings({ selected_window: windowId });
+      void fetchWindowThumbnail(windowId, 800);
+    },
+    [fetchWindowThumbnail, updateSettings],
+  );
 
   // Initial startup load: displays, thumbnails, windows, hotkeys & conflict check
   useEffect(() => {
@@ -218,6 +311,7 @@ export function StudioApp() {
       cancelCountdown();
       displayThumbUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
       winThumbUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      winThumbUrlsRef.current.clear();
     };
   }, [cancelCountdown, refreshThumbnails, refreshWindows, showAlert]);
 
@@ -395,19 +489,37 @@ export function StudioApp() {
         return;
       }
       if (mode === "Window") {
-        const list = await refreshWindows();
-        const stillValid = list.some((w) => w.id === settings.selected_window);
         await updateSettings({
           capture_mode: "Window",
           screen_enabled: true,
-          selected_window: stillValid ? settings.selected_window : (list[0]?.id ?? null),
         });
+        const list = await refreshWindows(settings.selected_window);
+        const stillValid = list.some((w) => w.id === settings.selected_window);
+        const nextWindowId = stillValid ? settings.selected_window : (list[0]?.id ?? null);
+        if (nextWindowId !== settings.selected_window) {
+          await updateSettings({
+            capture_mode: "Window",
+            screen_enabled: true,
+            selected_window: nextWindowId,
+          });
+        }
+        if (nextWindowId) {
+          void fetchWindowThumbnail(nextWindowId, 800);
+        }
         return;
       }
       await updateSettings({ capture_mode: "Screen", screen_enabled: true });
       void refreshThumbnails(displays);
     },
-    [displays, openAreaPicker, refreshThumbnails, refreshWindows, settings, updateSettings],
+    [
+      displays,
+      fetchWindowThumbnail,
+      openAreaPicker,
+      refreshThumbnails,
+      refreshWindows,
+      settings,
+      updateSettings,
+    ],
   );
 
   // Presenter Script / Teleprompter panel toggle
@@ -615,7 +727,13 @@ export function StudioApp() {
           windows={windows}
           windowThumbnails={windowThumbnails}
           windowsLoading={windowsLoading}
-          onRefreshWindows={() => void refreshWindows()}
+          windowThumbLoading={
+            Boolean(settings.selected_window) &&
+            windowThumbLoadingId === settings.selected_window
+          }
+          onRefreshWindows={() => void refreshWindows(settings.selected_window)}
+          onSelectWindow={handleSelectWindow}
+          onRefreshWindowPreview={(windowId) => void fetchWindowThumbnail(windowId, 800)}
           onCaptureModeChange={(mode) => void handleCaptureModeChange(mode)}
           onPickArea={() => {
             setHasUserPickedArea(false);
@@ -671,7 +789,7 @@ export function StudioApp() {
               return;
             }
             void refreshThumbnails(displays);
-            void refreshWindows();
+            void refreshWindows(settings.selected_window);
             setIsSourcePickerOpen(true);
           }}
           onQuickStart={() => {
@@ -731,8 +849,9 @@ export function StudioApp() {
         systemAudioDevice={settings.system_audio_device}
         onRefreshSources={() => {
           void refreshThumbnails(displays);
-          void refreshWindows();
+          void refreshWindows(settings.selected_window);
         }}
+        onSelectWindowPreview={(windowId) => void fetchWindowThumbnail(windowId, 640)}
         onRequestPickArea={() => {
           setHasUserPickedArea(false);
           void updateSettings({ capture_mode: "Area", capture_region: null, screen_enabled: true });

@@ -34,6 +34,7 @@ type Props = {
   systemAudioEnabled: boolean;
   systemAudioDevice: string;
   onRefreshSources: () => void;
+  onSelectWindowPreview?: (windowId: string) => void;
   onRequestPickArea?: () => void;
   onConfirm: (selection: {
     capture_mode: CaptureMode;
@@ -58,6 +59,7 @@ export function SourcePickerModal({
   systemAudioEnabled,
   systemAudioDevice,
   onRefreshSources,
+  onSelectWindowPreview,
   onRequestPickArea,
   onConfirm,
   onClose,
@@ -87,16 +89,17 @@ export function SourcePickerModal({
       .getSystemAudioDevices()
       .then(setAudioDevices)
       .catch(() => setAudioDevices([]));
-  }, [
-    captureRegion,
-    initialMode,
-    isOpen,
-    selectedDisplay,
-    selectedWindow,
-    systemAudioDevice,
-    systemAudioEnabled,
-    windows,
-  ]);
+    // Only reset modal selection state when opening the modal (not when background refreshes update `windows`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (windows.length === 0) return;
+    setPickedWindow((prev) =>
+      prev && windows.some((w) => w.id === prev) ? prev : (selectedWindow ?? windows[0]?.id ?? null),
+    );
+  }, [isOpen, selectedWindow, windows]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -295,7 +298,10 @@ export function SourcePickerModal({
                     <button
                       key={w.id}
                       type="button"
-                      onClick={() => setPickedWindow(w.id)}
+                      onClick={() => {
+                        setPickedWindow(w.id);
+                        if (!thumb) onSelectWindowPreview?.(w.id);
+                      }}
                       className="group relative flex flex-col overflow-hidden rounded-xl p-2 text-left transition-all"
                       style={{
                         background: selected ? "var(--accent-soft)" : "var(--surface-2)",
