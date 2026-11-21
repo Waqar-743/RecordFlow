@@ -15,7 +15,7 @@ use crate::commands::files::{
 };
 use crate::commands::history::{clear_timer_history, delete_timer_session, get_timer_history};
 use crate::commands::hotkeys::{
-    get_hotkey_failures, get_hotkeys, handle_shortcut_event, register_from_config, set_hotkeys,
+    get_hotkey_failures, get_hotkeys, handle_shortcut_event, register_on_startup, set_hotkeys,
     HotkeyRuntime,
 };
 use crate::commands::recording::{
@@ -31,6 +31,7 @@ use crate::tray::{
 use crate::utils::config::{load_config, AppConfig};
 use crate::utils::history::load_history;
 use std::sync::Arc;
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -84,7 +85,7 @@ pub fn run() {
                 eprintln!("RecordFlow: failed to initialize system tray: {err}");
             }
 
-            let res = register_from_config(app.handle(), &initial_hotkeys);
+            let res = register_on_startup(app.handle(), &initial_hotkeys);
             if !res.failed.is_empty() {
                 eprintln!(
                     "RecordFlow: some global shortcuts could not be registered: {:?}",
@@ -140,6 +141,11 @@ pub fn run() {
             minimize_main_window,
             restore_main_window,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let _ = app_handle.global_shortcut().unregister_all();
+            }
+        });
 }

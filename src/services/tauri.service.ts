@@ -21,8 +21,8 @@ export const isTauriApp = () =>
   typeof window !== "undefined" && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
-  toggle_recording: "Alt+Shift+R",
-  toggle_pause: "Alt+Shift+P",
+  toggle_recording: "Ctrl+Alt+Shift+R",
+  toggle_pause: "Ctrl+Alt+Shift+P",
 };
 
 // Mock state for browser preview & development
