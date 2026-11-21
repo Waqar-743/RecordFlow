@@ -2,11 +2,11 @@ use crate::commands::hotkeys::HotkeyConfig;
 use crate::error::RecorderError;
 use crate::state::app_state::RecordingSettings;
 use crate::utils::paths::{
-    get_app_data_dir, get_default_recordings_path as paths_default_recordings_path,
+    ensure_writable_dir, get_app_data_dir, resolve_recordings_dir,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn default_true() -> bool {
     true
@@ -26,7 +26,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let save_location = paths_default_recordings_path()
+        let save_location = resolve_recordings_dir(None)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| String::new());
 
@@ -34,7 +34,7 @@ impl Default for AppConfig {
             last_settings: RecordingSettings::default(),
             default_save_location: save_location,
             window_size: (1080, 720),
-            theme: "dark".to_string(),
+            theme: "graphite".to_string(),
             hotkeys: HotkeyConfig::default(),
             close_to_tray: true,
         }
@@ -80,14 +80,47 @@ pub fn save_config(config: &AppConfig) -> Result<(), RecorderError> {
     Ok(())
 }
 
+/// Resolves the active recordings directory, honoring `config.default_save_location` if valid
+/// and automatically healing/falling back to a writable directory if the configured or default
+/// `Documents` path fails (e.g. broken OneDrive junction `os error 2`).
 pub fn get_default_recordings_path() -> Result<PathBuf, RecorderError> {
-    let recordings = paths_default_recordings_path()?;
-    fs::create_dir_all(&recordings).map_err(|e| {
+    let existing_cfg = load_config().ok();
+    let preferred = existing_cfg
+        .as_ref()
+        .map(|c| c.default_save_location.as_str())
+        .filter(|s| !s.trim().is_empty());
+
+    let resolved = resolve_recordings_dir(preferred)?;
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if let Some(mut cfg) = existing_cfg {
+        if cfg.default_save_location != resolved_str {
+            cfg.default_save_location = resolved_str;
+            let _ = save_config(&cfg);
+        }
+    }
+
+    Ok(resolved)
+}
+
+/// Explicitly sets and validates a custom recordings directory and persists it to `config.json`.
+pub fn set_custom_recordings_path(custom_path: &str) -> Result<PathBuf, RecorderError> {
+    let trimmed = custom_path.trim();
+    if trimmed.is_empty() {
+        return Err(RecorderError::invalid_settings(
+            "Recordings folder path cannot be empty",
+        ));
+    }
+
+    let verified = ensure_writable_dir(Path::new(trimmed)).map_err(|e| {
         RecorderError::file_error(format!(
-            "Failed to create recordings directory ({}): {}",
-            recordings.to_string_lossy(),
-            e
+            "Cannot write to selected folder ({trimmed}): {e}"
         ))
     })?;
-    Ok(recordings)
+
+    let mut cfg = load_config().unwrap_or_else(|_| AppConfig::default());
+    cfg.default_save_location = verified.to_string_lossy().to_string();
+    save_config(&cfg)?;
+
+    Ok(verified)
 }
