@@ -85,7 +85,7 @@ export function TopBar({
       {/* Left: Brand + Workspace Switcher + File Actions */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2.5">
-          <BrandLogoIcon className="h-7 w-7 shrink-0" />
+          <BrandLogoIcon className="h-8 w-8 shrink-0 rounded-lg" />
           <div className="flex items-baseline gap-1.5">
             <span className="text-sm font-bold tracking-tight" style={{ color: "var(--text)" }}>
               RecordFlow

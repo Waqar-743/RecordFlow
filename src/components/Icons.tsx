@@ -2,13 +2,14 @@ import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-export function BrandLogoIcon({ className = "w-5 h-5" }: { className?: string }) {
+export function BrandLogoIcon({ className = "w-7 h-7" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 28 28" fill="none" aria-hidden="true">
-      <rect width="28" height="28" rx="8" fill="var(--accent)" />
-      <circle cx="14" cy="14" r="6.25" stroke="var(--accent-fg)" strokeWidth="2.2" />
-      <circle cx="14" cy="14" r="2.75" fill="var(--accent-fg)" />
-    </svg>
+    <img
+      src="/recordflow.png"
+      alt="RecordFlow"
+      draggable={false}
+      className={`select-none object-contain ${className}`}
+    />
   );
 }
 
