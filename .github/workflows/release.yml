@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.3.2)'
+        description: 'Version tag (e.g., v1.3.3)'
         required: true
-        default: 'v1.3.2'
+        default: 'v1.3.3'
 
 # Required permissions for creating releases
 permissions:
@@ -48,30 +48,26 @@ jobs:
           tagName: ${{ github.event.inputs.version || github.ref_name }}
           releaseName: 'RecordFlow ${{ github.event.inputs.version || github.ref_name }}'
           releaseBody: |
-            ## RecordFlow v1.3.2 — Turbo Hardware Export Engine, Windows Capture Compatibility Fix & Warm Studio Palette
+            ## RecordFlow v1.3.3 — Live Window Previews, Fullscreen Layout Fix, Conflict-Free Hotkeys & Official Brand Header
 
             ### Download
             Download the `.exe` or `.msi` installer for Windows below. 100% free, open-source, no watermarks, and zero cloud uploads.
 
-            ### What's New in v1.3.2
-            - **15x–25x Faster Local Video Export & Rendering**:
-              - Replaced per-frame random video seeking (`video.currentTime = t` which flushed the H.264 GOP buffer on every frame) with high-speed linear hardware playback decoding (`3.5x–4.0x` real-time).
-              - Cached static canvas backgrounds, presentation frame Gaussian drop shadows, and camera bubble shadows in offscreen buffers so they are rasterized once instead of on every frame.
-              - Replaced full-frame CSS blur filters with fast cropped downscale-upscale privacy blur, parallelized audio track decoding, increased `AudioData` chunk sizes by 16x, and enabled `latencyMode: "realtime"` on the hardware WebCodecs encoder.
-              - Added an **Instant save original** option inside the Export modal to save the raw MP4 immediately without re-encoding.
-            - **Fixed `GraphicsCaptureApiError(BorderConfigUnsupported)` & Cursor Config Compatibility**:
-              - Automatically detects whether the current Windows 10/11 build supports `GraphicsCaptureSession.IsBorderRequired` and `IsCursorCaptureEnabled` and gracefully falls back to OS default capture session settings instead of failing monitor or window capture startup.
-            - **Bulletproof Recordings Directory Resolution (`os error 2` Fix)**:
-              - Automatically verifies write access and falls back across `Videos\RecordFlow\Recordings`, `Documents\RecordFlow\Recordings`, `OneDrive`, user profile root (`C:\Users\<user>\RecordFlow\Recordings`), and `%LOCALAPPDATA%` when Windows `Documents` is a broken OneDrive junction.
-              - Added an interactive **Save Folder** control in the Record workspace bottom bar to open the recordings folder in Explorer or choose any custom destination folder.
-            - **Interactive Area Selection & Immediate Recording**:
-              - Clicking **Area** or **Select area** now opens a clean, fresh selection overlay without any pre-decided region.
-              - Drag anywhere on screen (or directly on the live preview stage) to draw your capture area, then click **Record this area (Enter)** to start recording immediately or **Apply area** to lock it into the preview.
-            - **Warm Studio Color Architecture**:
-              - Redesigned all 8 themes (**Obsidian Flame**, **Molten Ember**, **Crimson Noir**, **Burnished Copper**, **Velvet Rosé**, **Royal Amethyst**, **Editorial Ivory**, and **Alabaster Sun**) and all 18 studio canvas backgrounds with warm coral, amber, gold, crimson, rose, terracotta, and obsidian palettes.
-            - **Enhanced Record & Edit Studio UX**:
-              - Inline **Resolution** (`1080p HD`, `720p Fast`, `Native`), **Frame Rate** (`60 fps`, `30 fps`), and **Cursor Capture** selectors in the Record header.
-              - **Quick record** button alongside **Start recording**, inline **Microphone gain** slider, **Camera horizontal mirror** toggle, live recording timer/stop pill in the TopBar, and inline project renaming on the Edit Studio stage.
+            ### What's New in v1.3.3
+            - **Fixed Selected Window Live Preview**:
+              - Replaced desktop-crop thumbnails with direct per-window capture via `PrintWindow(PW_RENDERFULLCONTENT)` (cropping invisible DWM drop-shadow borders) so selecting any window updates the right preview container with that window's actual content even when covered by RecordFlow.
+              - Added immediate on-demand preview refresh when selecting a window, removed the 8-window thumbnail limit, added a refresh button on the window preview stage, and prevented stale settings overwrites during async mode changes.
+            - **Fixed Fullscreen / Maximized Viewport Layout & Scrolling**:
+              - Lowered minimum window dimensions (`900×560`) and fixed flex `min-h-0` / responsive stage heights so the bottom controls and **Start recording** action bar stay fully visible and scrollable on all screen resolutions and DPI scales.
+            - **Fixed `Alt+Shift+R` Global Shortcut Conflict**:
+              - Switched default global hotkeys to conflict-free `Ctrl+Alt+Shift+R` (Start/Stop) and `Ctrl+Alt+Shift+P` (Pause/Resume).
+              - Added automatic conflict-free startup fallback when an existing saved hotkey is already taken by another app, clean human-readable conflict messages, and hotkey cleanup on app exit.
+            - **Official RecordFlow Brand Icon in Top-Left Header**:
+              - Replaced the placeholder header icon with the official RecordFlow logo (`/recordflow.png`).
+            - **Includes all v1.3.2 highlights**:
+              - 15x–25x faster local export with linear hardware decoding and offscreen backdrop/shadow caching, plus **Instant save original**.
+              - Graceful Windows Graphics Capture fallback for `BorderConfigUnsupported` & cursor settings.
+              - Bulletproof recordings folder resolution with interactive folder selector, interactive area selection, and the 8 warm studio themes.
 
             ### System Requirements
             - Windows 10 version 1903 (build 18362) or later (x64)
