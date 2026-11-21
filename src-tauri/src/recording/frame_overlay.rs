@@ -211,7 +211,7 @@ fn ensure_window_class() -> Result<(), RecorderError> {
         let module = GetModuleHandleW(None).map_err(|_| win32_error("GetModuleHandleW failed"))?;
         let instance = HINSTANCE(module.0);
         let brush = HBRUSH(
-            *CLASS_BRUSH.get_or_init(|| CreateSolidBrush(COLORREF(0x00514137)).0 as isize)
+            *CLASS_BRUSH.get_or_init(|| CreateSolidBrush(COLORREF(0x003848E8)).0 as isize)
                 as *mut c_void,
         );
         let class = WNDCLASSW {

@@ -1,7 +1,6 @@
 /**
- * Theme registry. Every theme is a complete set of CSS custom properties that is
- * applied to <html data-theme="..."> (see styles/themes.css). The canvas editor
- * also reads `stage` colors from here so the editor backdrop follows the theme.
+ * Theme registry. Every theme is a complete set of warm, zero-blue, zero-green
+ * CSS custom properties applied to <html data-theme="..."> (see styles/themes.css).
  */
 export type ThemeId =
   | "graphite"
@@ -25,59 +24,59 @@ export interface ThemeDef {
 export const THEMES: ThemeDef[] = [
   {
     id: "graphite",
-    name: "Graphite",
-    description: "Calm neutral dark",
+    name: "Obsidian Flame",
+    description: "Warm carbon dark, sunset coral accent",
     mode: "dark",
-    swatch: ["#111214", "#1b1c20", "#8ea2ff", "#ececef"],
+    swatch: ["#120f0f", "#1e1919", "#ff6b4a", "#f7f1ee"],
   },
   {
     id: "ember",
-    name: "Ember",
-    description: "Warm dark, coral accent",
+    name: "Molten Ember",
+    description: "Roasted espresso, amber-flame accent",
     mode: "dark",
-    swatch: ["#16110e", "#211915", "#ff7a59", "#f4ebe6"],
-  },
-  {
-    id: "paper",
-    name: "Paper",
-    description: "Warm light",
-    mode: "light",
-    swatch: ["#f4f0e8", "#fffdf8", "#c4572f", "#2a251f"],
-  },
-  {
-    id: "daylight",
-    name: "Daylight",
-    description: "Crisp cool light",
-    mode: "light",
-    swatch: ["#eef1f6", "#ffffff", "#2563eb", "#0f172a"],
+    swatch: ["#150f0b", "#231913", "#ff7e47", "#f9efe8"],
   },
   {
     id: "midnight",
-    name: "Midnight",
-    description: "Deep navy, sky accent",
+    name: "Crimson Noir",
+    description: "Deep burgundy-noir, ruby-rose accent",
     mode: "dark",
-    swatch: ["#080d1a", "#0f172a", "#38bdf8", "#e2e8f0"],
+    swatch: ["#130b0e", "#22151a", "#fb5678", "#f9ecf0"],
   },
   {
     id: "nord",
-    name: "Nord",
-    description: "Arctic blue-grey",
+    name: "Burnished Copper",
+    description: "Warm bronze charcoal, liquid gold accent",
     mode: "dark",
-    swatch: ["#2a2f3a", "#353c4a", "#88c0d0", "#eceff4"],
+    swatch: ["#191512", "#28221d", "#f59e0b", "#f7f0e8"],
   },
   {
     id: "rose",
-    name: "Rosé",
-    description: "Muted violet, rose accent",
+    name: "Velvet Rosé",
+    description: "Plum-wine dark, silk rose accent",
     mode: "dark",
-    swatch: ["#1b1822", "#26212f", "#f2789f", "#efe7f3"],
+    swatch: ["#18121a", "#281e2c", "#f4729b", "#f7edf5"],
   },
   {
     id: "forest",
-    name: "Forest",
-    description: "Deep green, mint accent",
+    name: "Royal Amethyst",
+    description: "Warm aubergine, orchid-magenta accent",
     mode: "dark",
-    swatch: ["#0f1512", "#17201b", "#5ee0a8", "#e5efe9"],
+    swatch: ["#17111c", "#261c2f", "#e879f9", "#f6ecf9"],
+  },
+  {
+    id: "paper",
+    name: "Editorial Ivory",
+    description: "Warm parchment light, terracotta accent",
+    mode: "light",
+    swatch: ["#f5efe6", "#fffdf9", "#c84b28", "#281f1a"],
+  },
+  {
+    id: "daylight",
+    name: "Alabaster Sun",
+    description: "Crisp warm alabaster, vermilion accent",
+    mode: "light",
+    swatch: ["#faf5ef", "#ffffff", "#e0482d", "#221814"],
   },
 ];
 

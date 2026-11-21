@@ -46,26 +46,49 @@ html.rf-picker-mode #root {
   background: var(--text-3);
 }
 
-/* Subtle studio stage grid backdrop */
+/* Studio stage grid backdrop with warm dual-radial ambient lighting */
 .rf-stage-bg {
   background-color: var(--stage);
   background-image:
-    radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 60%),
+    radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 62%),
+    radial-gradient(circle at 85% 100%, var(--warning-soft), transparent 55%),
     linear-gradient(to right, var(--stage-grid) 1px, transparent 1px),
     linear-gradient(to bottom, var(--stage-grid) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px, 24px 24px;
+  background-size: 100% 100%, 100% 100%, 24px 24px, 24px 24px;
 }
 
-/* Studio surfaces & cards */
+/* Studio surfaces & cards with subtle top highlight rim */
 .rf-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--highlight);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.rf-card:hover {
+  border-color: var(--border-strong);
 }
 
 .rf-surface-elev {
   background: var(--bg-elev);
   border: 1px solid var(--border);
+}
+
+/* Primary Studio CTA Button */
+.rf-btn-primary {
+  background: var(--accent-gradient, var(--accent));
+  color: var(--accent-fg);
+  box-shadow: 0 6px 20px -4px var(--accent-ring), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.14s ease, filter 0.14s ease, box-shadow 0.14s ease;
+}
+
+.rf-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 10px 26px -4px var(--accent-ring), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.rf-btn-primary:active:not(:disabled) {
+  transform: scale(0.985);
 }
 
 /* Custom range slider */
@@ -92,12 +115,12 @@ input[type="range"].rf-slider::-webkit-slider-thumb {
   border-radius: 9999px;
   background: var(--accent);
   border: 2px solid var(--surface);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
   transition: transform 0.12s ease;
 }
 
 input[type="range"].rf-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+  transform: scale(1.18);
 }
 
 /* Focus ring */
@@ -137,7 +160,7 @@ textarea:focus-visible {
 }
 
 .rf-pop-in {
-  animation: rf-pop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rf-pop-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes rf-countdown-pop {
@@ -166,15 +189,15 @@ textarea:focus-visible {
   z-index: 9999;
   cursor: crosshair;
   user-select: none;
-  background: rgba(9, 10, 14, 0.48);
+  background: rgba(14, 10, 10, 0.5);
   touch-action: none;
 }
 
 .rf-region-picker-selection {
   position: absolute;
   border: 2px solid var(--accent);
-  background: rgba(142, 162, 255, 0.08);
-  box-shadow: 0 0 0 99999px rgba(6, 8, 12, 0.52);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 99999px rgba(10, 7, 7, 0.56);
   cursor: move;
 }
 
@@ -183,8 +206,8 @@ textarea:focus-visible {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 240, 230, 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 240, 230, 0.16) 1px, transparent 1px);
   background-size: 33.333% 33.333%;
 }
 
@@ -195,8 +218,8 @@ textarea:focus-visible {
   margin-left: -6px;
   margin-top: -6px;
   border-radius: 3px;
-  border: 1.5px solid #090a0e;
-  background: #ffffff;
+  border: 1.5px solid #140e0e;
+  background: #fffaf5;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
   z-index: 2;
 }
