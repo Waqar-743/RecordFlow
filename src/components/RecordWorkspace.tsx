@@ -387,10 +387,10 @@ export function RecordWorkspace({
     settings.capture_mode === "Window" ? Boolean(activeWindow) : displays.length > 0;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Main Scrollable Stage & Cards */}
-      <div className="flex-1 overflow-y-auto rf-scroll px-6 py-4">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4">
+      <div className="min-h-0 flex-1 overflow-y-auto rf-scroll px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 pb-4">
           {/* Header Row: Title + Capture Quality Pills + Segmented Mode Switcher */}
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -539,7 +539,10 @@ export function RecordWorkspace({
             /* WINDOW MODE: Split "Choose a window" list + Focused Window Preview Stage */
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
               {/* Left: Scrollable Choose a Window List */}
-              <div className="rf-card flex h-[350px] flex-col overflow-hidden rounded-2xl lg:col-span-5">
+              <div
+                className="rf-card flex min-h-[220px] flex-col overflow-hidden rounded-2xl lg:col-span-5"
+                style={{ height: "clamp(220px, 38vh, 360px)" }}
+              >
                 <div
                   className="flex items-center justify-between gap-2 px-4 py-3"
                   style={{ borderBottom: "1px solid var(--border)" }}
@@ -649,8 +652,8 @@ export function RecordWorkspace({
 
               {/* Right: Focused Window Preview Stage */}
               <div
-                className="rf-stage-bg relative flex h-[350px] flex-col items-center justify-center overflow-hidden rounded-2xl p-6 lg:col-span-7"
-                style={{ border: "1px solid var(--border)" }}
+                className="rf-stage-bg relative flex min-h-[220px] flex-col items-center justify-center overflow-hidden rounded-2xl p-6 lg:col-span-7"
+                style={{ border: "1px solid var(--border)", height: "clamp(220px, 38vh, 360px)" }}
               >
                 {/* Floating Status & Resolution Badge */}
                 <div
@@ -774,8 +777,8 @@ export function RecordWorkspace({
           ) : (
             /* SCREEN & AREA MODE: Full-width Studio Live Preview Stage */
             <div
-              className="rf-stage-bg relative flex h-[350px] flex-col items-center justify-center overflow-hidden rounded-2xl p-5"
-              style={{ border: "1px solid var(--border)" }}
+              className="rf-stage-bg relative flex min-h-[220px] flex-col items-center justify-center overflow-hidden rounded-2xl p-5"
+              style={{ border: "1px solid var(--border)", height: "clamp(220px, 38vh, 360px)" }}
             >
               {/* Top-left floating Status & Resolution Badge */}
               <div

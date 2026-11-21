@@ -158,7 +158,7 @@ export function EditorInspector({
       </div>
 
       {/* Scrollable Inspector Body */}
-      <div className="flex-1 space-y-5 overflow-y-auto p-4 rf-scroll">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 rf-scroll">
         {/* ======================== CANVAS TAB ======================== */}
         {activeTab === "canvas" && (
           <>

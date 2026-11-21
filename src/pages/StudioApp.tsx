@@ -658,7 +658,7 @@ export function StudioApp() {
 
   if (settingsLoading) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg)" }}>
+      <div className="flex h-full w-full items-center justify-center" style={{ background: "var(--bg)" }}>
         <div
           className="rf-card flex items-center gap-3 rounded-2xl px-6 py-4"
           style={{ color: "var(--text)" }}
@@ -675,7 +675,7 @@ export function StudioApp() {
 
   if (settingsError && !settings) {
     return (
-      <div className="flex h-screen items-center justify-center p-6" style={{ background: "var(--bg)" }}>
+      <div className="flex h-full w-full items-center justify-center p-6" style={{ background: "var(--bg)" }}>
         <div
           className="rf-card max-w-md rounded-2xl p-6"
           style={{ borderColor: "var(--danger)", color: "var(--text)" }}
@@ -693,7 +693,7 @@ export function StudioApp() {
 
   return (
     <div
-      className="flex h-screen w-screen flex-col overflow-hidden"
+      className="flex h-full w-full flex-col overflow-hidden"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       {/* 1. Top Navigation Bar */}

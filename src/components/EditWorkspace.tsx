@@ -429,7 +429,7 @@ export function EditWorkspace({
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Hidden Synchronized Video Decoders */}
       <video
         ref={screenVideoRef}
@@ -464,9 +464,9 @@ export function EditWorkspace({
       )}
 
       {/* Left Column: Stage + Interactive Timeline */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Presentation Canvas Stage */}
-        <div className="rf-stage-bg relative flex flex-1 items-center justify-center overflow-hidden p-6">
+        <div className="rf-stage-bg relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6">
           {/* Top-left Project Pill with Inline Editable Title */}
           <div
             className="absolute left-4 top-3.5 z-10 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium"
