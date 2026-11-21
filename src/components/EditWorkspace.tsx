@@ -383,8 +383,7 @@ export function EditWorkspace({
             <button
               type="button"
               onClick={onGoToRecord}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold shadow-sm"
-              style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+              className="rf-btn-primary flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold"
             >
               <RecordDotIcon className="h-3.5 w-3.5" />
               <span>Start a new recording</span>
@@ -468,18 +467,27 @@ export function EditWorkspace({
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Presentation Canvas Stage */}
         <div className="rf-stage-bg relative flex flex-1 items-center justify-center overflow-hidden p-6">
-          {/* Top-left Project Pill */}
+          {/* Top-left Project Pill with Inline Editable Title */}
           <div
             className="absolute left-4 top-3.5 z-10 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium"
             style={{
               background: "var(--surface)",
-              border: "1px solid var(--border)",
+              border: "1px solid var(--border-strong)",
               color: "var(--text-2)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
-            <span className="max-w-[200px] truncate font-semibold" style={{ color: "var(--text)" }}>
-              {project.name}
-            </span>
+            <input
+              type="text"
+              aria-label="Project title"
+              value={project.name}
+              onChange={(e) =>
+                onProjectChange((p) => ({ ...p, name: e.target.value }))
+              }
+              className="w-36 truncate bg-transparent font-semibold outline-none"
+              style={{ color: "var(--text)" }}
+              title="Click to rename project"
+            />
             <span style={{ color: "var(--text-3)" }}>·</span>
             <span className="font-mono">{project.canvas.aspectRatio}</span>
             {project.cameraUrl && project.camera.enabled && (

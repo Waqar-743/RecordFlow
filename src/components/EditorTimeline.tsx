@@ -125,8 +125,7 @@ export function EditorTimeline({
             type="button"
             onClick={onTogglePlay}
             aria-label={isPlaying ? "Pause playback" : "Play playback"}
-            className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm transition-transform active:scale-95"
-            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+            className="rf-btn-primary flex h-9 w-9 items-center justify-center rounded-xl"
           >
             {isPlaying ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
           </button>
@@ -255,8 +254,7 @@ export function EditorTimeline({
           <button
             type="button"
             onClick={onOpenExport}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all hover:brightness-105 active:scale-[0.99]"
-            style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+            className="rf-btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold"
           >
             <DownloadIcon className="h-3.5 w-3.5" />
             <span>Export</span>

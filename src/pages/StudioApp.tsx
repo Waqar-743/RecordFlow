@@ -70,6 +70,7 @@ export function StudioApp() {
   const [isHotkeyModalOpen, setIsHotkeyModalOpen] = useState(false);
   const [isScriptOpen, setIsScriptOpen] = useState(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig>(DEFAULT_HOTKEYS);
+  const [recordingsFolder, setRecordingsFolder] = useState<string>("");
 
   // Countdown & alerts
   const [activeCountdown, setActiveCountdown] = useState(0);
@@ -185,6 +186,13 @@ export function StudioApp() {
       try {
         const cfg = await tauriService.getHotkeys();
         if (!cancelled && cfg) setHotkeys({ ...DEFAULT_HOTKEYS, ...cfg });
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        const folder = await tauriService.getRecordingsFolder();
+        if (!cancelled && folder) setRecordingsFolder(folder);
       } catch {
         /* ignore */
       }
@@ -352,6 +360,22 @@ export function StudioApp() {
     await recording.resume();
   }, [recording]);
 
+  const [hasUserPickedArea, setHasUserPickedArea] = useState(false);
+
+  // Clear any stale persisted capture_region from previous sessions on startup
+  // so Area mode never shows an already-decided region until the user selects one.
+  const clearedInitialRegionRef = useRef(false);
+  useEffect(() => {
+    if (!settings || clearedInitialRegionRef.current) return;
+    clearedInitialRegionRef.current = true;
+    if (settings.capture_region !== null) {
+      void updateSettings({
+        capture_region: null,
+        capture_mode: settings.capture_mode === "Area" ? "Screen" : settings.capture_mode,
+      });
+    }
+  }, [settings, updateSettings]);
+
   // Capture mode switcher (Screen / Area / Window)
   const openAreaPicker = useCallback((startAfter: boolean) => {
     setPickRequest((prev) => ({ id: (prev?.id ?? 0) + 1, startAfter }));
@@ -361,7 +385,12 @@ export function StudioApp() {
     async (mode: CaptureMode) => {
       if (!settings) return;
       if (mode === "Area") {
-        await updateSettings({ capture_mode: "Area", screen_enabled: true });
+        setHasUserPickedArea(false);
+        await updateSettings({
+          capture_mode: "Area",
+          capture_region: null,
+          screen_enabled: true,
+        });
         openAreaPicker(false);
         return;
       }
@@ -561,6 +590,9 @@ export function StudioApp() {
         onWorkspaceChange={setWorkspace}
         hasProject={Boolean(project)}
         isRecording={recording.status.is_recording}
+        isPaused={recording.status.is_paused}
+        elapsedSeconds={recording.status.elapsed_seconds}
+        onStopRecording={() => void handleStopRecording()}
         isScriptOpen={isScriptOpen}
         onToggleScript={() => void handleToggleScript()}
         onOpenProject={() => void handleOpenProject()}
@@ -585,14 +617,69 @@ export function StudioApp() {
           windowsLoading={windowsLoading}
           onRefreshWindows={() => void refreshWindows()}
           onCaptureModeChange={(mode) => void handleCaptureModeChange(mode)}
-          onPickArea={() => openAreaPicker(false)}
+          onPickArea={() => {
+            setHasUserPickedArea(false);
+            void updateSettings({ capture_mode: "Area", capture_region: null, screen_enabled: true });
+            openAreaPicker(false);
+          }}
+          onSelectAreaDirectly={(region) => {
+            setHasUserPickedArea(true);
+            void updateSettings({
+              capture_region: region,
+              capture_mode: "Area",
+              screen_enabled: true,
+              selected_display: activeDisplay?.index ?? settings.selected_display,
+            });
+          }}
           recordingStatus={recording.status}
           recordingLoading={recording.loading}
           hotkeys={hotkeys}
+          recordingsFolder={recordingsFolder}
+          onOpenRecordingsFolder={() => {
+            void tauriService.openRecordingsFolder().catch((e) =>
+              showAlert({
+                severity: "error",
+                title: "Recordings folder",
+                message: String(e),
+              }),
+            );
+          }}
+          onChangeRecordingsFolder={() => {
+            void (async () => {
+              try {
+                const picked = await tauriService.pickRecordingsFolder(recordingsFolder);
+                if (picked) {
+                  setRecordingsFolder(picked);
+                  showAlert({
+                    severity: "success",
+                    title: "Save folder updated",
+                    message: `Recordings will be saved to ${picked}`,
+                  });
+                }
+              } catch (e) {
+                showAlert({
+                  severity: "error",
+                  title: "Could not change folder",
+                  message: String(e),
+                });
+              }
+            })();
+          }}
           onRequestStart={() => {
+            if (settings.capture_mode === "Area" && (!hasUserPickedArea || !settings.capture_region)) {
+              openAreaPicker(true);
+              return;
+            }
             void refreshThumbnails(displays);
             void refreshWindows();
             setIsSourcePickerOpen(true);
+          }}
+          onQuickStart={() => {
+            if (settings.capture_mode === "Area" && (!hasUserPickedArea || !settings.capture_region)) {
+              openAreaPicker(true);
+              return;
+            }
+            beginRecordingWithCountdown(settings.countdown_seconds ?? 0);
           }}
           onStopRecording={() => void handleStopRecording()}
           onPauseRecording={() => void handlePauseRecording()}
@@ -612,10 +699,11 @@ export function StudioApp() {
       {/* 4. Interactive Region Picker Controller (Native Tauri window OR Browser overlay) */}
       <ScreenRegionPicker
         display={activeDisplay}
-        captureRegion={settings.capture_region}
+        captureRegion={hasUserPickedArea ? settings.capture_region : null}
         disabled={recording.status.is_recording || activeCountdown > 0}
         pickRequest={pickRequest}
         onCaptureRegionChange={async (region: CaptureRegion | null) => {
+          setHasUserPickedArea(Boolean(region));
           await updateSettings({
             capture_region: region,
             capture_mode: region ? "Area" : settings.capture_mode,
@@ -638,12 +726,17 @@ export function StudioApp() {
         windows={windows}
         windowThumbnails={windowThumbnails}
         selectedWindow={settings.selected_window}
-        captureRegion={settings.capture_region}
+        captureRegion={hasUserPickedArea ? settings.capture_region : null}
         systemAudioEnabled={settings.system_audio_enabled}
         systemAudioDevice={settings.system_audio_device}
         onRefreshSources={() => {
           void refreshThumbnails(displays);
           void refreshWindows();
+        }}
+        onRequestPickArea={() => {
+          setHasUserPickedArea(false);
+          void updateSettings({ capture_mode: "Area", capture_region: null, screen_enabled: true });
+          openAreaPicker(true);
         }}
         onConfirm={(sel) => {
           setIsSourcePickerOpen(false);
@@ -656,6 +749,10 @@ export function StudioApp() {
               system_audio_device: sel.system_audio_device,
               screen_enabled: true,
             });
+            if (sel.capture_mode === "Area" && (!hasUserPickedArea || !settings.capture_region)) {
+              openAreaPicker(true);
+              return;
+            }
             beginRecordingWithCountdown(settings.countdown_seconds ?? 0);
           })();
         }}

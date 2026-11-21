@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { tauriService } from "../services/tauri.service";
 import type {
   AudioDeviceInfo,
@@ -9,6 +15,7 @@ import type {
   HotkeyConfig,
   RecordingSettings,
   RecordingStatus,
+  Resolution,
   WindowInfo,
 } from "../types";
 import { createAudioLevelMeter } from "../utils/audioMeter";
@@ -18,11 +25,14 @@ import {
   CameraOffIcon,
   CropIcon,
   EyeOffIcon,
+  FlipHorizontalIcon,
+  FolderOpenIcon,
   MicIcon,
   MicOffIcon,
   MonitorIcon,
   PauseIcon,
   PlayIcon,
+  PointerIcon,
   RecordDotIcon,
   RefreshIcon,
   SearchIcon,
@@ -45,10 +55,15 @@ type Props = {
   onRefreshWindows: () => void;
   onCaptureModeChange: (mode: CaptureMode) => void;
   onPickArea: () => void;
+  onSelectAreaDirectly?: (region: CaptureRegion) => void;
   recordingStatus: RecordingStatus;
   recordingLoading: boolean;
   hotkeys: HotkeyConfig;
+  recordingsFolder: string;
+  onOpenRecordingsFolder: () => void;
+  onChangeRecordingsFolder: () => void;
   onRequestStart: () => void;
+  onQuickStart: () => void;
   onStopRecording: () => void;
   onPauseRecording: () => void;
   onResumeRecording: () => void;
@@ -58,6 +73,13 @@ function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function shortenFolderPath(fullPath: string): string {
+  if (!fullPath) return "RecordFlow/Recordings";
+  const parts = fullPath.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 3) return fullPath;
+  return `…\\${parts.slice(-3).join("\\")}`;
 }
 
 export function RecordWorkspace({
@@ -73,10 +95,15 @@ export function RecordWorkspace({
   onRefreshWindows,
   onCaptureModeChange,
   onPickArea,
+  onSelectAreaDirectly,
   recordingStatus,
   recordingLoading,
   hotkeys,
+  recordingsFolder,
+  onOpenRecordingsFolder,
+  onChangeRecordingsFolder,
   onRequestStart,
+  onQuickStart,
   onStopRecording,
   onPauseRecording,
   onResumeRecording,
@@ -90,6 +117,13 @@ export function RecordWorkspace({
   const camMiniVideoRef = useRef<HTMLVideoElement | null>(null);
   const camStageVideoRef = useRef<HTMLVideoElement | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
+  const previewFrameRef = useRef<HTMLDivElement | null>(null);
+  const [stageDragRect, setStageDragRect] = useState<{
+    startX: number;
+    startY: number;
+    currX: number;
+    currY: number;
+  } | null>(null);
 
   const isRecording = recordingStatus.is_recording;
   const isPaused = recordingStatus.is_paused;
@@ -259,9 +293,21 @@ export function RecordWorkspace({
     ? isPaused
       ? "var(--warning)"
       : "var(--record)"
-    : "var(--success)";
+    : "var(--accent)";
 
   const areaCropStyle = useMemo(() => {
+    if (stageDragRect) {
+      const left = Math.min(stageDragRect.startX, stageDragRect.currX);
+      const top = Math.min(stageDragRect.startY, stageDragRect.currY);
+      const width = Math.abs(stageDragRect.currX - stageDragRect.startX);
+      const height = Math.abs(stageDragRect.currY - stageDragRect.startY);
+      return {
+        left: `${left * 100}%`,
+        top: `${top * 100}%`,
+        width: `${width * 100}%`,
+        height: `${height * 100}%`,
+      };
+    }
     const reg: CaptureRegion | null = settings.capture_region;
     if (!reg || !activeDisplay) return null;
     return {
@@ -270,12 +316,65 @@ export function RecordWorkspace({
       width: `${(reg.width / Math.max(1, activeDisplay.width)) * 100}%`,
       height: `${(reg.height / Math.max(1, activeDisplay.height)) * 100}%`,
     };
-  }, [activeDisplay, settings.capture_region]);
+  }, [activeDisplay, settings.capture_region, stageDragRect]);
 
-  const modes: { id: CaptureMode; label: string; Icon: typeof MonitorIcon }[] = [
-    { id: "Screen", label: "Screen", Icon: MonitorIcon },
-    { id: "Area", label: "Area", Icon: CropIcon },
-    { id: "Window", label: "Window", Icon: AppWindowIcon },
+  const handleStagePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (settings.capture_mode !== "Area" || isRecording || e.button !== 0) return;
+    const el = previewFrameRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    setStageDragRect({ startX: nx, startY: ny, currX: nx, currY: ny });
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const handleStagePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!stageDragRect) return;
+    const el = previewFrameRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    setStageDragRect((prev) => (prev ? { ...prev, currX: nx, currY: ny } : null));
+  };
+
+  const handleStagePointerUp = () => {
+    if (!stageDragRect || !activeDisplay) {
+      setStageDragRect(null);
+      return;
+    }
+    const left = Math.min(stageDragRect.startX, stageDragRect.currX);
+    const top = Math.min(stageDragRect.startY, stageDragRect.currY);
+    const wFrac = Math.abs(stageDragRect.currX - stageDragRect.startX);
+    const hFrac = Math.abs(stageDragRect.currY - stageDragRect.startY);
+    setStageDragRect(null);
+
+    const rawW = Math.round(wFrac * activeDisplay.width);
+    const rawH = Math.round(hFrac * activeDisplay.height);
+    if (rawW < 64 || rawH < 64) return;
+
+    const x = Math.max(0, Math.round(left * activeDisplay.width));
+    const y = Math.max(0, Math.round(top * activeDisplay.height));
+    const align16 = (val: number, maxVal: number) => {
+      const clamped = Math.min(Math.max(64, val), Math.max(64, maxVal));
+      return Math.max(16, clamped - (clamped % 16));
+    };
+    const region: CaptureRegion = {
+      x,
+      y,
+      width: align16(rawW, activeDisplay.width - x),
+      height: align16(rawH, activeDisplay.height - y),
+    };
+    onSelectAreaDirectly?.(region);
+  };
+
+  const modes: { id: CaptureMode; label: string; sub: string; Icon: typeof MonitorIcon }[] = [
+    { id: "Screen", label: "Screen", sub: "Full display", Icon: MonitorIcon },
+    { id: "Area", label: "Area", sub: "Custom crop", Icon: CropIcon },
+    { id: "Window", label: "Window", sub: "Single app", Icon: AppWindowIcon },
   ];
 
   const canStart =
@@ -284,63 +383,148 @@ export function RecordWorkspace({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Main Scrollable Stage & Cards */}
-      <div className="flex-1 overflow-y-auto rf-scroll px-6 py-5">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5">
-          {/* Header Row: Title + Interaction Tracking Subtitle + Segmented Mode Switcher */}
+      <div className="flex-1 overflow-y-auto rf-scroll px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          {/* Header Row: Title + Capture Quality Pills + Segmented Mode Switcher */}
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1
-                className="text-xl font-semibold tracking-tight"
-                style={{ color: "var(--text)" }}
-              >
-                New recording
-              </h1>
+              <div className="flex items-center gap-2.5">
+                <h1
+                  className="text-xl font-bold tracking-tight"
+                  style={{ color: "var(--text)" }}
+                >
+                  New recording
+                </h1>
+                <span
+                  className="rounded-full px-2.5 py-0.5 font-mono text-[10px] font-semibold"
+                  style={{
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent-ring)",
+                  }}
+                >
+                  {settings.resolution} · {settings.fps} FPS
+                </span>
+              </div>
               <p className="mt-1 text-xs" style={{ color: "var(--text-2)" }}>
                 Cursor movements and clicks are tracked automatically for smooth post-recording zoom and studio polish.
               </p>
             </div>
 
-            {/* Segmented Capture-Mode Switcher */}
-            <div
-              role="tablist"
-              aria-label="Capture mode"
-              className="inline-flex items-center rounded-xl p-1"
-              style={{
-                background: "var(--inset)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {modes.map(({ id, label, Icon }) => {
-                const active = settings.capture_mode === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    disabled={isRecording}
-                    onClick={() => onCaptureModeChange(id)}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                      isRecording ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                    }`}
-                    style={
-                      active
-                        ? {
-                            background: "var(--surface-2)",
-                            color: "var(--text)",
-                            boxShadow: "var(--shadow-sm)",
-                          }
-                        : { color: "var(--text-2)" }
-                    }
-                  >
-                    <Icon
-                      className="h-3.5 w-3.5"
-                      style={{ color: active ? "var(--accent)" : "var(--text-3)" }}
-                    />
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Quick Quality & Cursor Strip */}
+              <div
+                className="hidden sm:inline-flex items-center gap-1 rounded-xl px-2 py-1 text-[11px]"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <select
+                  aria-label="Capture resolution"
+                  disabled={isRecording}
+                  value={settings.resolution}
+                  onChange={(e) =>
+                    void onUpdateSettings({ resolution: e.target.value as Resolution })
+                  }
+                  className="bg-transparent font-mono text-[11px] font-semibold outline-none cursor-pointer px-1"
+                  style={{ color: "var(--text)" }}
+                  title="Capture resolution"
+                >
+                  <option value="1080p" style={{ background: "var(--surface)" }}>
+                    1080p HD
+                  </option>
+                  <option value="720p" style={{ background: "var(--surface)" }}>
+                    720p Fast
+                  </option>
+                  <option value="Native" style={{ background: "var(--surface)" }}>
+                    Native Res
+                  </option>
+                </select>
+
+                <span style={{ color: "var(--border-strong)" }}>|</span>
+
+                <select
+                  aria-label="Capture frame rate"
+                  disabled={isRecording}
+                  value={settings.fps}
+                  onChange={(e) => void onUpdateSettings({ fps: Number(e.target.value) })}
+                  className="bg-transparent font-mono text-[11px] font-semibold outline-none cursor-pointer px-1"
+                  style={{ color: "var(--text)" }}
+                  title="Capture frame rate"
+                >
+                  <option value={60} style={{ background: "var(--surface)" }}>
+                    60 fps
+                  </option>
+                  <option value={30} style={{ background: "var(--surface)" }}>
+                    30 fps
+                  </option>
+                </select>
+
+                <span style={{ color: "var(--border-strong)" }}>|</span>
+
+                <button
+                  type="button"
+                  disabled={isRecording}
+                  onClick={() =>
+                    void onUpdateSettings({ capture_cursor: !settings.capture_cursor })
+                  }
+                  title="Toggle cursor visibility in screen capture"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors"
+                  style={
+                    settings.capture_cursor
+                      ? { background: "var(--accent-soft)", color: "var(--accent)" }
+                      : { color: "var(--text-3)" }
+                  }
+                >
+                  <PointerIcon className="h-3 w-3" />
+                  <span>Cursor</span>
+                </button>
+              </div>
+
+              {/* Segmented Capture-Mode Switcher */}
+              <div
+                role="tablist"
+                aria-label="Capture mode"
+                className="inline-flex items-center rounded-xl p-1"
+                style={{
+                  background: "var(--inset)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {modes.map(({ id, label, Icon }) => {
+                  const active = settings.capture_mode === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      disabled={isRecording}
+                      onClick={() => onCaptureModeChange(id)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                        isRecording ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                      }`}
+                      style={
+                        active
+                          ? {
+                              background: "var(--surface-2)",
+                              color: "var(--text)",
+                              border: "1px solid var(--border-strong)",
+                              boxShadow: "var(--shadow-sm)",
+                            }
+                          : { color: "var(--text-2)", border: "1px solid transparent" }
+                      }
+                    >
+                      <Icon
+                        className="h-3.5 w-3.5"
+                        style={{ color: active ? "var(--accent)" : "var(--text-3)" }}
+                      />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -349,7 +533,7 @@ export function RecordWorkspace({
             /* WINDOW MODE: Split "Choose a window" list + Focused Window Preview Stage */
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
               {/* Left: Scrollable Choose a Window List */}
-              <div className="rf-card flex h-[360px] flex-col overflow-hidden rounded-2xl lg:col-span-5">
+              <div className="rf-card flex h-[350px] flex-col overflow-hidden rounded-2xl lg:col-span-5">
                 <div
                   className="flex items-center justify-between gap-2 px-4 py-3"
                   style={{ borderBottom: "1px solid var(--border)" }}
@@ -439,7 +623,10 @@ export function RecordWorkspace({
                             >
                               {w.title}
                             </div>
-                            <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={{ color: "var(--text-3)" }}>
+                            <div
+                              className="mt-0.5 flex items-center gap-2 text-[11px]"
+                              style={{ color: "var(--text-3)" }}
+                            >
                               <span className="truncate font-mono">{w.process || "Application"}</span>
                               <span>·</span>
                               <span className="shrink-0 font-mono">
@@ -455,7 +642,8 @@ export function RecordWorkspace({
               </div>
 
               {/* Right: Focused Window Preview Stage */}
-              <div className="rf-stage-bg relative flex h-[360px] flex-col items-center justify-center overflow-hidden rounded-2xl p-6 lg:col-span-7"
+              <div
+                className="rf-stage-bg relative flex h-[350px] flex-col items-center justify-center overflow-hidden rounded-2xl p-6 lg:col-span-7"
                 style={{ border: "1px solid var(--border)" }}
               >
                 {/* Floating Status & Resolution Badge */}
@@ -533,7 +721,10 @@ export function RecordWorkspace({
                   </div>
                 ) : (
                   <div className="text-center">
-                    <AppWindowIcon className="mx-auto mb-2 h-10 w-10" style={{ color: "var(--text-3)" }} />
+                    <AppWindowIcon
+                      className="mx-auto mb-2 h-10 w-10"
+                      style={{ color: "var(--text-3)" }}
+                    />
                     <div className="text-sm font-medium" style={{ color: "var(--text-2)" }}>
                       Select a window from the list
                     </div>
@@ -547,7 +738,7 @@ export function RecordWorkspace({
           ) : (
             /* SCREEN & AREA MODE: Full-width Studio Live Preview Stage */
             <div
-              className="rf-stage-bg relative flex h-[360px] flex-col items-center justify-center overflow-hidden rounded-2xl p-5"
+              className="rf-stage-bg relative flex h-[350px] flex-col items-center justify-center overflow-hidden rounded-2xl p-5"
               style={{ border: "1px solid var(--border)" }}
             >
               {/* Top-left floating Status & Resolution Badge */}
@@ -613,11 +804,7 @@ export function RecordWorkspace({
                     type="button"
                     disabled={isRecording}
                     onClick={onPickArea}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90"
-                    style={{
-                      background: "var(--accent)",
-                      color: "var(--accent-fg)",
-                    }}
+                    className="rf-btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
                   >
                     <CropIcon className="h-3.5 w-3.5" />
                     <span>{settings.capture_region ? "Reselect area" : "Select area"}</span>
@@ -642,7 +829,14 @@ export function RecordWorkspace({
 
               {/* Center Live Preview Frame */}
               <div
-                className="relative flex max-h-full max-w-[600px] items-center justify-center overflow-hidden rounded-xl"
+                ref={previewFrameRef}
+                onPointerDown={handleStagePointerDown}
+                onPointerMove={handleStagePointerMove}
+                onPointerUp={handleStagePointerUp}
+                onPointerCancel={handleStagePointerUp}
+                className={`relative flex max-h-full max-w-[600px] items-center justify-center overflow-hidden rounded-xl select-none ${
+                  settings.capture_mode === "Area" && !isRecording ? "cursor-crosshair" : ""
+                }`}
                 style={{
                   aspectRatio: activeDisplay
                     ? `${activeDisplay.width} / ${activeDisplay.height}`
@@ -657,7 +851,8 @@ export function RecordWorkspace({
                   <img
                     src={activeThumb}
                     alt={activeDisplay?.name ?? "Display preview"}
-                    className="h-full w-full object-cover"
+                    draggable={false}
+                    className="h-full w-full object-cover pointer-events-none"
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-2 p-8 text-center">
@@ -668,28 +863,69 @@ export function RecordWorkspace({
                   </div>
                 )}
 
-                {/* Area Mode Locked Region Highlight Overlay */}
+                {/* Area Mode Prompt when no region has been selected yet */}
+                {settings.capture_mode === "Area" && !areaCropStyle && (
+                  <div
+                    className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center"
+                    style={{ background: "rgba(12, 8, 8, 0.48)" }}
+                  >
+                    <div
+                      className="rounded-2xl px-4 py-3 shadow-xl"
+                      style={{
+                        background: "rgba(20, 14, 14, 0.9)",
+                        border: "1px dashed var(--accent)",
+                        color: "var(--text)",
+                      }}
+                    >
+                      <div className="text-xs font-semibold">
+                        Drag here to select an area, or click &ldquo;Select area&rdquo; above
+                      </div>
+                      <div className="mt-0.5 text-[11px]" style={{ color: "var(--text-2)" }}>
+                        Choose the exact region you want to record
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Area Mode User-Selected Region Highlight Overlay */}
                 {settings.capture_mode === "Area" && areaCropStyle && (
                   <>
                     <div
                       className="pointer-events-none absolute inset-0"
-                      style={{ background: "rgba(5, 6, 10, 0.56)" }}
+                      style={{ background: "rgba(12, 8, 8, 0.56)" }}
                     />
                     <div
-                      className="pointer-events-none absolute rounded-sm"
+                      className="absolute rounded-sm"
                       style={{
                         ...areaCropStyle,
                         border: "2px solid var(--accent)",
-                        boxShadow: "0 0 0 1px rgba(255,255,255,0.25) inset",
-                        background: "rgba(142, 162, 255, 0.14)",
+                        boxShadow: "0 0 0 1px rgba(255,240,230,0.25) inset",
+                        background: "var(--accent-soft)",
                       }}
                     >
-                      <div
-                        className="absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold"
-                        style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-                      >
-                        Area locked · {settings.capture_region?.width}×{settings.capture_region?.height}
-                      </div>
+                      {settings.capture_region && !stageDragRect && (
+                        <div
+                          className="absolute left-1.5 top-1.5 flex flex-wrap items-center gap-1.5"
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <span
+                            className="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold shadow"
+                            style={{ background: "var(--surface)", color: "var(--accent)", border: "1px solid var(--accent)" }}
+                          >
+                            {settings.capture_region.width}×{settings.capture_region.height}
+                          </span>
+                          {!isRecording && (
+                            <button
+                              type="button"
+                              onClick={onQuickStart}
+                              className="rf-btn-primary inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold shadow"
+                            >
+                              <RecordDotIcon className="h-2.5 w-2.5" />
+                              <span>Record area</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -724,7 +960,11 @@ export function RecordWorkspace({
               {activeDisplay && (
                 <div
                   className="absolute bottom-3.5 left-4 rounded-md px-2 py-0.5 text-[11px]"
-                  style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)" }}
+                  style={{
+                    background: "var(--surface)",
+                    color: "var(--text-3)",
+                    border: "1px solid var(--border)",
+                  }}
                 >
                   {activeDisplay.name}
                   {settings.capture_mode === "Area" && settings.capture_region
@@ -759,7 +999,9 @@ export function RecordWorkspace({
                       Microphone
                     </div>
                     <div className="text-[11px]" style={{ color: "var(--text-3)" }}>
-                      {settings.mic_enabled ? "Voice commentary active" : "Muted"}
+                      {settings.mic_enabled
+                        ? `Voice active · ${Math.round((settings.mic_volume ?? 0.85) * 100)}% gain`
+                        : "Muted"}
                     </div>
                   </div>
                 </div>
@@ -772,7 +1014,7 @@ export function RecordWorkspace({
               </div>
 
               {settings.mic_enabled ? (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <select
                     disabled={isRecording}
                     value={settings.microphone_device}
@@ -794,23 +1036,39 @@ export function RecordWorkspace({
                       ))
                     )}
                   </select>
-                  {/* Live input level bar */}
+
+                  {/* Live input level bar & gain control */}
                   <div className="flex items-center gap-2">
                     <div
                       className="h-1.5 flex-1 overflow-hidden rounded-full"
                       style={{ background: "var(--inset)" }}
+                      title="Live microphone level"
                     >
                       <div
                         className="h-full rounded-full transition-[width] duration-75"
                         style={{
-                          width: `${Math.max(4, Math.round(micLevel * 100))}%`,
-                          background: micLevel > 0.8 ? "var(--danger)" : "var(--success)",
+                          width: `${Math.max(6, Math.round(micLevel * 100))}%`,
+                          background:
+                            micLevel > 0.8
+                              ? "var(--danger)"
+                              : "var(--accent-gradient, var(--accent))",
                         }}
                       />
                     </div>
-                    <span className="font-mono text-[10px]" style={{ color: "var(--text-3)" }}>
-                      {Math.round(micLevel * 100)}%
-                    </span>
+                    <input
+                      type="range"
+                      aria-label="Microphone gain"
+                      title={`Mic gain: ${Math.round((settings.mic_volume ?? 0.85) * 100)}%`}
+                      min={0.1}
+                      max={1.5}
+                      step={0.05}
+                      disabled={isRecording}
+                      value={settings.mic_volume ?? 0.85}
+                      onChange={(e) =>
+                        void onUpdateSettings({ mic_volume: Number(e.target.value) })
+                      }
+                      className="rf-slider w-16"
+                    />
                   </div>
                 </div>
               ) : (
@@ -830,7 +1088,9 @@ export function RecordWorkspace({
                   <div
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
                     style={{
-                      background: settings.camera_enabled ? "var(--accent-soft)" : "var(--surface-2)",
+                      background: settings.camera_enabled
+                        ? "var(--accent-soft)"
+                        : "var(--surface-2)",
                       color: settings.camera_enabled ? "var(--accent)" : "var(--text-3)",
                     }}
                   >
@@ -868,7 +1128,7 @@ export function RecordWorkspace({
               </div>
 
               {settings.camera_enabled ? (
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <div
                     className="relative h-10 w-14 shrink-0 overflow-hidden rounded-lg"
                     style={{ background: "var(--inset)", border: "1px solid var(--border)" }}
@@ -902,6 +1162,30 @@ export function RecordWorkspace({
                       ))
                     )}
                   </select>
+                  <button
+                    type="button"
+                    disabled={isRecording}
+                    onClick={() =>
+                      void onUpdateSettings({ camera_mirror: !settings.camera_mirror })
+                    }
+                    title="Mirror camera feed horizontally"
+                    className="rounded-lg p-1.5 transition-colors"
+                    style={
+                      settings.camera_mirror
+                        ? {
+                            background: "var(--accent-soft)",
+                            border: "1px solid var(--accent)",
+                            color: "var(--accent)",
+                          }
+                        : {
+                            background: "var(--inset)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text-3)",
+                          }
+                    }
+                  >
+                    <FlipHorizontalIcon className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               ) : (
                 <div
@@ -963,9 +1247,10 @@ export function RecordWorkspace({
                           ? {
                               background: "var(--surface-2)",
                               color: "var(--text)",
+                              border: "1px solid var(--border-strong)",
                               boxShadow: "var(--shadow-sm)",
                             }
-                          : { color: "var(--text-2)" }
+                          : { color: "var(--text-2)", border: "1px solid transparent" }
                       }
                     >
                       {opt.label}
@@ -980,16 +1265,16 @@ export function RecordWorkspace({
 
       {/* Prominent Bottom Action Bar */}
       <footer
-        className="shrink-0 px-6 py-3.5"
+        className="shrink-0 px-6 py-3"
         style={{
           background: "var(--bg-elev)",
           borderTop: "1px solid var(--border)",
         }}
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
-          {/* Left: Hide App While Recording + System Audio Quick Toggle */}
-          <div className="flex flex-wrap items-center gap-5">
-            <label className="flex cursor-pointer items-center gap-2.5 select-none">
+          {/* Left: Hide App While Recording + System Audio + Verified Save Destination */}
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-2 select-none">
               <ToggleSwitch
                 size="sm"
                 checked={settings.auto_minimize}
@@ -997,7 +1282,10 @@ export function RecordWorkspace({
                 label="Hide app while recording"
                 onChange={(auto_minimize) => void onUpdateSettings({ auto_minimize })}
               />
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--text-2)" }}>
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-medium"
+                style={{ color: "var(--text-2)" }}
+              >
                 <EyeOffIcon className="h-3.5 w-3.5" style={{ color: "var(--text-3)" }} />
                 Hide app while recording
               </span>
@@ -1005,7 +1293,7 @@ export function RecordWorkspace({
 
             <div className="hidden sm:block h-4 w-px" style={{ background: "var(--border)" }} />
 
-            <label className="flex cursor-pointer items-center gap-2.5 select-none">
+            <label className="flex cursor-pointer items-center gap-2 select-none">
               <ToggleSwitch
                 size="sm"
                 checked={settings.system_audio_enabled}
@@ -1013,11 +1301,51 @@ export function RecordWorkspace({
                 label="Capture system audio"
                 onChange={(system_audio_enabled) => void onUpdateSettings({ system_audio_enabled })}
               />
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--text-2)" }}>
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-medium"
+                style={{ color: "var(--text-2)" }}
+              >
                 <SpeakerIcon className="h-3.5 w-3.5" style={{ color: "var(--text-3)" }} />
                 System audio
               </span>
             </label>
+
+            <div className="hidden lg:block h-4 w-px" style={{ background: "var(--border)" }} />
+
+            {/* Active Recordings Save Folder Pill */}
+            <div
+              className="hidden lg:inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-[11px]"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-2)",
+              }}
+              title={`Recordings save location: ${recordingsFolder}`}
+            >
+              <FolderOpenIcon className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--accent)" }} />
+              <span className="max-w-[190px] truncate font-mono">
+                {shortenFolderPath(recordingsFolder)}
+              </span>
+              <button
+                type="button"
+                onClick={onOpenRecordingsFolder}
+                className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors"
+                style={{ background: "var(--surface-2)", color: "var(--text)" }}
+                title="Open recordings folder in File Explorer"
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                disabled={isRecording}
+                onClick={onChangeRecordingsFolder}
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-40"
+                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+                title="Choose a custom folder to save recordings"
+              >
+                Change
+              </button>
+            </div>
           </div>
 
           {/* Right: Start Recording or Active Transport Controls */}
@@ -1050,7 +1378,11 @@ export function RecordWorkspace({
                     color: "var(--text)",
                   }}
                 >
-                  {isPaused ? <PlayIcon className="h-3.5 w-3.5" /> : <PauseIcon className="h-3.5 w-3.5" />}
+                  {isPaused ? (
+                    <PlayIcon className="h-3.5 w-3.5" />
+                  ) : (
+                    <PauseIcon className="h-3.5 w-3.5" />
+                  )}
                   <span>{isPaused ? "Resume" : "Pause"}</span>
                 </button>
 
@@ -1066,32 +1398,48 @@ export function RecordWorkspace({
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                disabled={!canStart || recordingLoading}
-                onClick={onRequestStart}
-                className={`inline-flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-xs font-semibold shadow-md transition-all ${
-                  !canStart || recordingLoading ? "opacity-50 cursor-not-allowed" : "hover:brightness-105 active:scale-[0.99]"
-                }`}
-                style={{
-                  background: "var(--accent)",
-                  color: "var(--accent-fg)",
-                }}
-              >
-                <RecordDotIcon className="h-3.5 w-3.5" />
-                <span>Start recording</span>
-                {hotkeys.toggle_recording && (
-                  <kbd
-                    className="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold"
-                    style={{
-                      background: "rgba(0, 0, 0, 0.2)",
-                      color: "var(--accent-fg)",
-                    }}
-                  >
-                    {hotkeys.toggle_recording}
-                  </kbd>
-                )}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={!canStart || recordingLoading}
+                  onClick={onQuickStart}
+                  title="Start recording immediately with your current source & audio settings"
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-colors ${
+                    !canStart || recordingLoading ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border-strong)",
+                    color: "var(--text)",
+                  }}
+                >
+                  <PlayIcon className="h-3 w-3" style={{ color: "var(--accent)" }} />
+                  <span>Quick record</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!canStart || recordingLoading}
+                  onClick={onRequestStart}
+                  className={`rf-btn-primary inline-flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-xs font-semibold ${
+                    !canStart || recordingLoading ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  <RecordDotIcon className="h-3.5 w-3.5" />
+                  <span>Start recording</span>
+                  {hotkeys.toggle_recording && (
+                    <kbd
+                      className="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold"
+                      style={{
+                        background: "rgba(0, 0, 0, 0.22)",
+                        color: "var(--accent-fg)",
+                      }}
+                    >
+                      {hotkeys.toggle_recording}
+                    </kbd>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>

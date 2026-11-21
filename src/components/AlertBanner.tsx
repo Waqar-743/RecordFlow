@@ -64,7 +64,7 @@ export function AlertBanner({ alert, onDismiss }: Props) {
             className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-opacity hover:opacity-85"
             style={{
               background: palette.accent,
-              color: "#0b0c0e",
+              color: "var(--accent-fg)",
             }}
           >
             {alert.actionLabel}
