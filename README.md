@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Waqar-743/RecordFlow/releases/latest">
-    <img alt="Download RecordFlow" src="https://img.shields.io/badge/Download-RecordFlow%20v1.3.1%20for%20Windows-ff6b4a?style=for-the-badge&logo=windows" />
+    <img alt="Download RecordFlow" src="https://img.shields.io/badge/Download-RecordFlow%20v1.3.2%20for%20Windows-ff6b4a?style=for-the-badge&logo=windows" />
   </a>
 </p>
 
@@ -28,8 +28,8 @@ Get the latest Windows installer from the [RecordFlow releases page](https://git
 
 Direct release assets:
 
-- [Download EXE installer (`RecordFlow_1.3.1_x64-setup.exe`)](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.1_x64-setup.exe)
-- [Download MSI installer (`RecordFlow_1.3.1_x64_en-US.msi`)](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.1_x64_en-US.msi)
+- [Download EXE installer (`RecordFlow_1.3.2_x64-setup.exe`)](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.2_x64-setup.exe)
+- [Download MSI installer (`RecordFlow_1.3.2_x64_en-US.msi`)](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.2_x64_en-US.msi)
 
 ## Highlights
 

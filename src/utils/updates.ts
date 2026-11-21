@@ -1,7 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isTauriApp } from "../services/tauri.service";
 
-export const APP_VERSION = "1.3.1";
+export const APP_VERSION = "1.3.2";
 const GITHUB_RELEASES_API = "https://api.github.com/repos/Waqar-743/RecordFlow/releases/latest";
 
 export interface AppUpdateInfo {
