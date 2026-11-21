@@ -300,7 +300,7 @@ export function renderCompositionFrame(
     ctx.shadowColor = `rgba(0, 0, 0, ${(0.55 * shadowStrength).toFixed(3)})`;
     ctx.shadowBlur = Math.round(54 * shadowStrength * (canvasW / 1280));
     ctx.shadowOffsetY = Math.round(22 * shadowStrength * (canvasH / 720));
-    ctx.fillStyle = "#090a0d";
+    ctx.fillStyle = "#100c0c";
     ctx.beginPath();
     ctx.roundRect(geom.frameX, geom.frameY, geom.frameW, geom.frameH, radius);
     ctx.fill();
@@ -313,8 +313,8 @@ export function renderCompositionFrame(
   ctx.roundRect(geom.frameX, geom.frameY, geom.frameW, geom.frameH, radius);
   ctx.clip();
 
-  // Dark backing inside frame
-  ctx.fillStyle = "#0a0b0e";
+  // Warm dark backing inside frame
+  ctx.fillStyle = "#120d0d";
   ctx.fillRect(geom.frameX, geom.frameY, geom.frameW, geom.frameH);
 
   const zoom = evaluateZoomAtTime(project.zooms, time);
@@ -372,14 +372,14 @@ export function renderCompositionFrame(
       const fx = geom.frameX + kf.focusX * geom.frameW;
       const fy = geom.frameY + kf.focusY * geom.frameH;
       ctx.save();
-      ctx.strokeStyle = "#8ea2ff";
+      ctx.strokeStyle = "#ff6b4a";
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.arc(fx, fy, 18, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = "#8ea2ff";
+      ctx.fillStyle = "#ff6b4a";
       ctx.beginPath();
       ctx.arc(fx, fy, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -431,13 +431,13 @@ function drawBlurRegion(
   }
 
   // Subtle frosted tint so blurred areas stay clean even on dark/flat regions
-  ctx.fillStyle = "rgba(18, 20, 26, 0.24)";
+  ctx.fillStyle = "rgba(26, 18, 18, 0.24)";
   ctx.fillRect(bx, by, bw, bh);
   ctx.restore();
 
   if (isSelected) {
     ctx.save();
-    ctx.strokeStyle = "#8ea2ff";
+    ctx.strokeStyle = "#ff6b4a";
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 4]);
     ctx.beginPath();
@@ -518,7 +518,7 @@ function drawCursorOverlay(
   ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.lineWidth = Math.max(1.2, 1.8 * scaleFactor);
-  ctx.strokeStyle = "#0d0f14";
+  ctx.strokeStyle = "#161111";
   ctx.stroke();
   ctx.restore();
 }
@@ -670,7 +670,7 @@ export function createDefaultProject(params: {
       enabled: Boolean(params.cursorTrack && params.cursorTrack.samples.length > 0),
       scale: 1.15,
       clickRipple: true,
-      rippleColor: "#8ea2ff",
+      rippleColor: "#ff6b4a",
       highlightHalo: false,
       smoothMotion: true,
     },

@@ -62,6 +62,7 @@ let mockStatus: RecordingStatus = {
   elapsed_seconds: 0,
 };
 
+let mockSaveFolder = "Videos/RecordFlow/Recordings";
 let mockHistory: TimerSession[] = [];
 let mockTimerId: number | null = null;
 
@@ -80,18 +81,18 @@ function createMockScreenThumbnail(
   const ctx = canvas.getContext("2d");
   if (!ctx) return [];
 
-  // Wallpaper gradient
+  // Warm wallpaper gradient (strictly zero blue/green)
   const grad = ctx.createLinearGradient(0, 0, width, height);
   grad.addColorStop(0, accentA);
-  grad.addColorStop(0.55, "#111827");
+  grad.addColorStop(0.55, "#1a1312");
   grad.addColorStop(1, accentB);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle decorative glow
+  // Subtle decorative warm glow
   const glow = ctx.createRadialGradient(width * 0.72, height * 0.25, 10, width * 0.72, height * 0.25, width * 0.45);
-  glow.addColorStop(0, "rgba(142, 162, 255, 0.28)");
-  glow.addColorStop(1, "rgba(142, 162, 255, 0)");
+  glow.addColorStop(0, "rgba(255, 107, 74, 0.28)");
+  glow.addColorStop(1, "rgba(255, 107, 74, 0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
 
@@ -100,8 +101,8 @@ function createMockScreenThumbnail(
   const padY = Math.round(height * 0.11);
   const winW = width - padX * 2;
   const winH = height - padY * 2 - 18;
-  ctx.fillStyle = "rgba(15, 18, 26, 0.86)";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.fillStyle = "rgba(22, 16, 16, 0.88)";
+  ctx.strokeStyle = "rgba(255, 235, 225, 0.15)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(padX, padY, winW, winH, 12);
@@ -109,12 +110,12 @@ function createMockScreenThumbnail(
   ctx.stroke();
 
   // Window chrome bar
-  ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+  ctx.fillStyle = "rgba(255, 240, 230, 0.05)";
   ctx.beginPath();
   ctx.roundRect(padX, padY, winW, 28, [12, 12, 0, 0]);
   ctx.fill();
 
-  const dotColors = ["#ff5f57", "#febc2e", "#28c840"];
+  const dotColors = ["#ff5f57", "#f59e0b", "#f4729b"];
   dotColors.forEach((c, i) => {
     ctx.fillStyle = c;
     ctx.beginPath();
@@ -123,22 +124,22 @@ function createMockScreenThumbnail(
   });
 
   // Sidebar + content blocks
-  ctx.fillStyle = "rgba(255, 255, 255, 0.035)";
+  ctx.fillStyle = "rgba(255, 240, 230, 0.035)";
   ctx.fillRect(padX + 1, padY + 29, Math.round(winW * 0.22), winH - 30);
 
   for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i === 1 ? "rgba(142, 162, 255, 0.22)" : "rgba(255, 255, 255, 0.08)";
+    ctx.fillStyle = i === 1 ? "rgba(255, 107, 74, 0.24)" : "rgba(255, 240, 230, 0.08)";
     ctx.beginPath();
     ctx.roundRect(padX + 12, padY + 44 + i * 24, Math.round(winW * 0.16), 12, 4);
     ctx.fill();
   }
 
   const contentX = padX + Math.round(winW * 0.26);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.fillStyle = "rgba(255, 248, 244, 0.92)";
   ctx.font = "600 17px Inter, system-ui, sans-serif";
   ctx.fillText(title, contentX, padY + 62);
 
-  ctx.fillStyle = "rgba(165, 180, 252, 0.85)";
+  ctx.fillStyle = "rgba(255, 146, 115, 0.9)";
   ctx.font = "500 12px 'JetBrains Mono', monospace";
   ctx.fillText(subtitle, contentX, padY + 84);
 
@@ -147,27 +148,27 @@ function createMockScreenThumbnail(
   for (let i = 0; i < 3; i++) {
     const cx = contentX + i * (cardW + 10);
     const cy = padY + 104;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.09)";
+    ctx.fillStyle = "rgba(255, 240, 230, 0.05)";
+    ctx.strokeStyle = "rgba(255, 240, 230, 0.1)";
     ctx.beginPath();
     ctx.roundRect(cx, cy, cardW, 62, 8);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "rgba(142, 162, 255, 0.7)";
+    ctx.fillStyle = i === 1 ? "rgba(245, 158, 11, 0.78)" : "rgba(255, 107, 74, 0.75)";
     ctx.beginPath();
     ctx.roundRect(cx + 12, cy + 16, cardW * 0.55, 8, 4);
     ctx.fill();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.fillStyle = "rgba(255, 240, 230, 0.22)";
     ctx.beginPath();
     ctx.roundRect(cx + 12, cy + 34, cardW * 0.75, 10, 4);
     ctx.fill();
   }
 
   // Taskbar
-  ctx.fillStyle = "rgba(7, 9, 14, 0.82)";
+  ctx.fillStyle = "rgba(12, 9, 9, 0.85)";
   ctx.fillRect(0, height - 24, width, 24);
   for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i === 2 ? "#8ea2ff" : "rgba(255, 255, 255, 0.22)";
+    ctx.fillStyle = i === 2 ? "#ff6b4a" : "rgba(255, 240, 230, 0.22)";
     ctx.beginPath();
     ctx.roundRect(width / 2 - 46 + i * 20, height - 18, 12, 12, 3);
     ctx.fill();
@@ -259,8 +260,8 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
       return createMockScreenThumbnail(
         idx === 0 ? "Display 1 (Primary)" : `Display ${idx + 1} — Studio Pro`,
         idx === 0 ? "1920 × 1080 · Active Desktop" : "2560 × 1440 · Extended Display",
-        idx === 0 ? "#1e1b4b" : "#064e3b",
-        idx === 0 ? "#0c1222" : "#0a1622",
+        idx === 0 ? "#2e1216" : "#2b160e",
+        idx === 0 ? "#140b0d" : "#160d09",
         w,
         h,
       ) as unknown as T;
@@ -274,11 +275,22 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
       return createMockScreenThumbnail(
         win.title,
         `${win.process}.exe · ${win.width} × ${win.height}`,
-        "#1f1b38",
-        "#0c101b",
+        "#2a141d",
+        "#130b0e",
         maxW,
         h,
       ) as unknown as T;
+    }
+
+    if (cmd === "get_recordings_folder") {
+      return mockSaveFolder as unknown as T;
+    }
+
+    if (cmd === "set_recordings_folder") {
+      if (typeof args?.path === "string" && args.path.trim()) {
+        mockSaveFolder = args.path.trim();
+      }
+      return mockSaveFolder as unknown as T;
     }
 
     if (cmd === "get_capture_windows") {
@@ -582,6 +594,24 @@ export const tauriService = {
   getRecordingStatus: () => invoke<RecordingStatus>("get_recording_status"),
 
   getLastRecordingInfo: () => invoke<RecordingInfo>("get_last_recording_info"),
+  getRecordingsFolder: () => invoke<string>("get_recordings_folder"),
+  setRecordingsFolder: (path: string) => invoke<string>("set_recordings_folder", { path }),
+  pickRecordingsFolder: async (currentPath?: string): Promise<string | null> => {
+    if (isTauriApp()) {
+      const picked = await openDialog({
+        title: "Choose Recordings Save Folder",
+        directory: true,
+        multiple: false,
+        defaultPath: currentPath || undefined,
+      });
+      if (!picked || Array.isArray(picked)) return null;
+      return invoke<string>("set_recordings_folder", { path: picked });
+    }
+    const next = window.prompt("Enter recordings folder path:", currentPath || mockSaveFolder);
+    if (!next || !next.trim()) return null;
+    mockSaveFolder = next.trim();
+    return mockSaveFolder;
+  },
   openRecordingInExplorer: (path: string) => invoke<void>("open_recording_in_explorer", { path }),
   deleteRecording: (path: string) => invoke<void>("delete_recording", { path }),
   openRecordingsFolder: () => invoke<void>("open_recordings_folder"),

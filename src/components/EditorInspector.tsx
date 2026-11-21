@@ -72,8 +72,8 @@ const SNAP_PRESETS: { id: CameraSnapPreset; label: string }[] = [
   { id: "center-right", label: "Right-Edge" },
 ];
 
-const RIPPLE_COLORS = ["#8ea2ff", "#ff7a59", "#38bdf8", "#4ade80", "#f2789f", "#fbbf24"];
-const BORDER_COLORS = ["#ffffff", "#8ea2ff", "#38bdf8", "#f2789f", "#18181b"];
+const RIPPLE_COLORS = ["#ff6b4a", "#f59e0b", "#fb5678", "#f4729b", "#e879f9", "#fbbf24"];
+const BORDER_COLORS = ["#ffffff", "#ff6b4a", "#f59e0b", "#f4729b", "#1c1515"];
 
 export function EditorInspector({
   project,

@@ -75,24 +75,24 @@ export class BrowserCaptureController {
       const renderLoop = () => {
         const t = (performance.now() - startT) / 1000;
         const grad = ctx.createLinearGradient(0, 0, 1280, 720);
-        grad.addColorStop(0, "#131722");
-        grad.addColorStop(1, "#0b0e16");
+        grad.addColorStop(0, "#1c1414");
+        grad.addColorStop(1, "#110c0c");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 1280, 720);
 
-        ctx.fillStyle = "#1c2233";
-        ctx.strokeStyle = "rgba(142, 162, 255, 0.3)";
+        ctx.fillStyle = "#261b1b";
+        ctx.strokeStyle = "rgba(255, 107, 74, 0.34)";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.roundRect(120, 90, 1040, 540, 20);
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = "#f8fafc";
+        ctx.fillStyle = "#faf3ef";
         ctx.font = "700 32px Inter, sans-serif";
         ctx.fillText("RecordFlow Live Capture Session", 170, 172);
 
-        ctx.fillStyle = "#94a3b8";
+        ctx.fillStyle = "#c4b0ae";
         ctx.font = "500 16px 'JetBrains Mono', monospace";
         ctx.fillText(
           `Mode: ${settings.capture_mode} · Elapsed: ${t.toFixed(1)}s · 60 fps`,
@@ -103,11 +103,11 @@ export class BrowserCaptureController {
         // Moving interactive indicator
         const mx = 220 + ((Math.sin(t * 1.3) + 1) / 2) * 760;
         const my = 320 + ((Math.cos(t * 0.9) + 1) / 2) * 200;
-        ctx.fillStyle = "rgba(142, 162, 255, 0.25)";
+        ctx.fillStyle = "rgba(255, 107, 74, 0.25)";
         ctx.beginPath();
         ctx.arc(mx, my, 46, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#8ea2ff";
+        ctx.fillStyle = "#ff6b4a";
         ctx.beginPath();
         ctx.arc(mx, my, 12, 0, Math.PI * 2);
         ctx.fill();

@@ -59,13 +59,13 @@ function drawMountainScene(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  sky: Array<[number, string]>,
+  horizon: Array<[number, string]>,
   sun: { x: number; y: number; r: number; color: string },
   ridges: Array<{ y: number; color: string; seed: number; amp: number }>,
 ) {
-  drawLinearGradient(ctx, w, h, 180, sky);
+  drawLinearGradient(ctx, w, h, 180, horizon);
 
-  // Sun / moon glow
+  // Sun glow
   const sx = sun.x * w;
   const sy = sun.y * h;
   const sr = sun.r * Math.min(w, h);
@@ -104,41 +104,41 @@ function drawMountainScene(
 }
 
 export const STUDIO_BACKGROUNDS: StudioBackground[] = [
-  // Gradients
+  // Gradients (Strictly warm coral, crimson, amber, gold, rose, plum, and ivory — zero blue/green)
   {
     id: "aurora-indigo",
-    name: "Aurora Indigo",
+    name: "Sunset Flame",
     category: "gradient",
-    css: "linear-gradient(135deg, #1e1b4b 0%, #3730a3 45%, #0ea5e9 100%)",
+    css: "linear-gradient(135deg, #2b0f14 0%, #b83227 48%, #ff7a45 100%)",
     draw: (ctx, w, h) =>
       drawLinearGradient(ctx, w, h, 135, [
-        [0, "#1e1b4b"],
-        [0.45, "#3730a3"],
-        [1, "#0ea5e9"],
+        [0, "#2b0f14"],
+        [0.48, "#b83227"],
+        [1, "#ff7a45"],
       ]),
   },
   {
     id: "sunset-coral",
-    name: "Sunset Coral",
+    name: "Coral Velvet",
     category: "gradient",
-    css: "linear-gradient(135deg, #ff7e5f 0%, #c850c0 55%, #4158d0 100%)",
+    css: "linear-gradient(135deg, #ff7e5f 0%, #d9468f 52%, #4a153b 100%)",
     draw: (ctx, w, h) =>
       drawLinearGradient(ctx, w, h, 135, [
         [0, "#ff7e5f"],
-        [0.55, "#c850c0"],
-        [1, "#4158d0"],
+        [0.52, "#d9468f"],
+        [1, "#4a153b"],
       ]),
   },
   {
     id: "emerald-tide",
-    name: "Emerald Tide",
+    name: "Crimson Gold",
     category: "gradient",
-    css: "linear-gradient(135deg, #064e3b 0%, #0d9488 52%, #38bdf8 100%)",
+    css: "linear-gradient(135deg, #3b0d11 0%, #b91c1c 50%, #f59e0b 100%)",
     draw: (ctx, w, h) =>
       drawLinearGradient(ctx, w, h, 135, [
-        [0, "#064e3b"],
-        [0.52, "#0d9488"],
-        [1, "#38bdf8"],
+        [0, "#3b0d11"],
+        [0.5, "#b91c1c"],
+        [1, "#f59e0b"],
       ]),
   },
   {
@@ -167,28 +167,28 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
   },
   {
     id: "cloud-mist",
-    name: "Cloud Mist",
+    name: "Champagne Blush",
     category: "gradient",
-    css: "linear-gradient(135deg, #e2e8f0 0%, #dbeafe 50%, #fce7f3 100%)",
+    css: "linear-gradient(135deg, #fdf6ee 0%, #fad8c0 50%, #fce4ec 100%)",
     draw: (ctx, w, h) =>
       drawLinearGradient(ctx, w, h, 135, [
-        [0, "#e2e8f0"],
-        [0.5, "#dbeafe"],
-        [1, "#fce7f3"],
+        [0, "#fdf6ee"],
+        [0.5, "#fad8c0"],
+        [1, "#fce4ec"],
       ]),
   },
 
   // Abstract Meshes & Textures
   {
     id: "mesh-cobalt",
-    name: "Cobalt Mesh",
+    name: "Ruby Mesh",
     category: "abstract",
-    css: "radial-gradient(circle at 20% 20%, #6366f1 0%, transparent 55%), radial-gradient(circle at 80% 80%, #06b6d4 0%, transparent 55%), #090d1f",
+    css: "radial-gradient(circle at 20% 20%, #e11d48 0%, transparent 55%), radial-gradient(circle at 80% 80%, #ff6b4a 0%, transparent 55%), #170a0d",
     draw: (ctx, w, h) =>
-      drawMeshOrbs(ctx, w, h, "#090d1f", [
-        { x: 0.18, y: 0.2, r: 0.62, color: "rgba(99, 102, 241, 0.78)" },
-        { x: 0.84, y: 0.82, r: 0.65, color: "rgba(6, 182, 212, 0.72)" },
-        { x: 0.78, y: 0.15, r: 0.45, color: "rgba(192, 132, 252, 0.45)" },
+      drawMeshOrbs(ctx, w, h, "#170a0d", [
+        { x: 0.18, y: 0.2, r: 0.62, color: "rgba(225, 29, 72, 0.76)" },
+        { x: 0.84, y: 0.82, r: 0.65, color: "rgba(255, 107, 74, 0.72)" },
+        { x: 0.78, y: 0.15, r: 0.45, color: "rgba(245, 158, 11, 0.42)" },
       ]),
   },
   {
@@ -200,33 +200,33 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
       drawMeshOrbs(ctx, w, h, "#160c0a", [
         { x: 0.22, y: 0.75, r: 0.6, color: "rgba(249, 115, 22, 0.72)" },
         { x: 0.8, y: 0.24, r: 0.6, color: "rgba(225, 29, 72, 0.68)" },
-        { x: 0.5, y: 0.5, r: 0.45, color: "rgba(251, 191, 36, 0.25)" },
+        { x: 0.5, y: 0.5, r: 0.45, color: "rgba(251, 191, 36, 0.28)" },
       ]),
   },
   {
     id: "mesh-nordic",
-    name: "Nordic Aura",
+    name: "Copper Aura",
     category: "abstract",
-    css: "radial-gradient(circle at 18% 30%, #88c0d0 0%, transparent 55%), radial-gradient(circle at 82% 75%, #81a1c1 0%, transparent 55%), #242933",
+    css: "radial-gradient(circle at 18% 30%, #f59e0b 0%, transparent 55%), radial-gradient(circle at 82% 75%, #f4729b 0%, transparent 55%), #211714",
     draw: (ctx, w, h) =>
-      drawMeshOrbs(ctx, w, h, "#242933", [
-        { x: 0.18, y: 0.3, r: 0.6, color: "rgba(136, 192, 208, 0.55)" },
-        { x: 0.82, y: 0.74, r: 0.62, color: "rgba(129, 161, 193, 0.52)" },
-        { x: 0.55, y: 0.15, r: 0.45, color: "rgba(180, 142, 173, 0.35)" },
+      drawMeshOrbs(ctx, w, h, "#211714", [
+        { x: 0.18, y: 0.3, r: 0.6, color: "rgba(245, 158, 11, 0.55)" },
+        { x: 0.82, y: 0.74, r: 0.62, color: "rgba(244, 114, 155, 0.5)" },
+        { x: 0.55, y: 0.15, r: 0.45, color: "rgba(255, 107, 74, 0.38)" },
       ]),
   },
   {
     id: "studio-grid",
-    name: "Studio Grid",
+    name: "Studio Carbon Grid",
     category: "abstract",
-    css: "repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 20px), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 20px), linear-gradient(135deg, #11131a, #1d2233)",
+    css: "repeating-linear-gradient(90deg, rgba(255,235,220,0.06) 0 1px, transparent 1px 20px), repeating-linear-gradient(0deg, rgba(255,235,220,0.06) 0 1px, transparent 1px 20px), linear-gradient(135deg, #141010, #261b19)",
     draw: (ctx, w, h) => {
       drawLinearGradient(ctx, w, h, 135, [
-        [0, "#101218"],
-        [1, "#1c2234"],
+        [0, "#141010"],
+        [1, "#261b19"],
       ]);
       const step = Math.max(24, Math.round(Math.min(w, h) / 18));
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.055)";
+      ctx.strokeStyle = "rgba(255, 235, 220, 0.055)";
       ctx.lineWidth = 1;
       for (let x = 0; x <= w; x += step) {
         ctx.beginPath();
@@ -241,7 +241,7 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
         ctx.stroke();
       }
       const glow = ctx.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.45, w * 0.55);
-      glow.addColorStop(0, "rgba(142, 162, 255, 0.18)");
+      glow.addColorStop(0, "rgba(255, 107, 74, 0.2)");
       glow.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, w, h);
@@ -251,25 +251,25 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
   // Scenic Wallpapers
   {
     id: "scenic-alpine",
-    name: "Alpine Dusk",
+    name: "Velvet Peaks",
     category: "scenic",
-    css: "linear-gradient(180deg, #1e1b4b 0%, #6d28d9 42%, #fb7185 72%, #1c1936 100%)",
+    css: "linear-gradient(180deg, #261021 0%, #831843 42%, #fb7185 72%, #24101c 100%)",
     draw: (ctx, w, h) =>
       drawMountainScene(
         ctx,
         w,
         h,
         [
-          [0, "#141332"],
-          [0.42, "#4c1d95"],
+          [0, "#261021"],
+          [0.42, "#831843"],
           [0.72, "#f472b6"],
           [1, "#fda4af"],
         ],
         { x: 0.72, y: 0.34, r: 0.085, color: "#fef08a" },
         [
-          { y: 0.64, color: "#3b235a", seed: 1.2, amp: 0.07 },
-          { y: 0.74, color: "#261844", seed: 2.7, amp: 0.06 },
-          { y: 0.85, color: "#140e28", seed: 4.4, amp: 0.045 },
+          { y: 0.64, color: "#4a1936", seed: 1.2, amp: 0.07 },
+          { y: 0.74, color: "#331026", seed: 2.7, amp: 0.06 },
+          { y: 0.85, color: "#1d0916", seed: 4.4, amp: 0.045 },
         ],
       ),
   },
@@ -284,7 +284,7 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
         w,
         h,
         [
-          [0, "#24192b"],
+          [0, "#24161e"],
           [0.45, "#b45309"],
           [0.72, "#fbbf24"],
           [1, "#fef3c7"],
@@ -299,25 +299,25 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
   },
   {
     id: "scenic-fjord",
-    name: "Midnight Fjord",
+    name: "Crimson Canyon",
     category: "scenic",
-    css: "linear-gradient(180deg, #071324 0%, #0f3a52 45%, #34d399 72%, #071320 100%)",
+    css: "linear-gradient(180deg, #1f0b0e 0%, #881337 45%, #f97316 72%, #1c090b 100%)",
     draw: (ctx, w, h) =>
       drawMountainScene(
         ctx,
         w,
         h,
         [
-          [0, "#050d1a"],
-          [0.4, "#0f2e42"],
-          [0.68, "#10b981"],
-          [1, "#064e3b"],
+          [0, "#1c090c"],
+          [0.4, "#7f1d1d"],
+          [0.68, "#ea580c"],
+          [1, "#fbbf24"],
         ],
-        { x: 0.25, y: 0.25, r: 0.065, color: "#e0f2fe" },
+        { x: 0.25, y: 0.26, r: 0.075, color: "#fef3c7" },
         [
-          { y: 0.62, color: "#0c2536", seed: 2.0, amp: 0.08 },
-          { y: 0.75, color: "#081c2b", seed: 4.1, amp: 0.06 },
-          { y: 0.87, color: "#04101a", seed: 6.3, amp: 0.03 },
+          { y: 0.62, color: "#4c1114", seed: 2.0, amp: 0.08 },
+          { y: 0.75, color: "#330b0d", seed: 4.1, amp: 0.06 },
+          { y: 0.87, color: "#1c0607", seed: 6.3, amp: 0.03 },
         ],
       ),
   },
@@ -349,21 +349,21 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
   // Solid Tones
   {
     id: "solid-obsidian",
-    name: "Obsidian",
+    name: "Warm Obsidian",
     category: "solid",
-    css: "#0d0e12",
+    css: "#120e0e",
     draw: (ctx, w, h) => {
-      ctx.fillStyle = "#0d0e12";
+      ctx.fillStyle = "#120e0e";
       ctx.fillRect(0, 0, w, h);
     },
   },
   {
     id: "solid-slate",
-    name: "Studio Slate",
+    name: "Roasted Espresso",
     category: "solid",
-    css: "#1e2430",
+    css: "#261c18",
     draw: (ctx, w, h) => {
-      ctx.fillStyle = "#1e2430";
+      ctx.fillStyle = "#261c18";
       ctx.fillRect(0, 0, w, h);
     },
   },
@@ -379,11 +379,11 @@ export const STUDIO_BACKGROUNDS: StudioBackground[] = [
   },
   {
     id: "solid-snow",
-    name: "Crisp White",
+    name: "Warm Alabaster",
     category: "solid",
-    css: "#f8fafc",
+    css: "#fbf8f4",
     draw: (ctx, w, h) => {
-      ctx.fillStyle = "#f8fafc";
+      ctx.fillStyle = "#fbf8f4";
       ctx.fillRect(0, 0, w, h);
     },
   },
