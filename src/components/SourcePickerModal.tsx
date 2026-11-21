@@ -34,6 +34,7 @@ type Props = {
   systemAudioEnabled: boolean;
   systemAudioDevice: string;
   onRefreshSources: () => void;
+  onRequestPickArea?: () => void;
   onConfirm: (selection: {
     capture_mode: CaptureMode;
     selected_display: number;
@@ -57,6 +58,7 @@ export function SourcePickerModal({
   systemAudioEnabled,
   systemAudioDevice,
   onRefreshSources,
+  onRequestPickArea,
   onConfirm,
   onClose,
 }: Props) {
@@ -72,7 +74,7 @@ export function SourcePickerModal({
     setTab(
       initialMode === "Window"
         ? "window"
-        : initialMode === "Area" && captureRegion
+        : initialMode === "Area"
           ? "area"
           : "screen",
     );
@@ -213,20 +215,18 @@ export function SourcePickerModal({
             </span>
           </button>
 
-          {captureRegion && (
-            <button
-              type="button"
-              onClick={() => setTab("area")}
-              className="inline-flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-semibold transition-colors"
-              style={{
-                borderColor: tab === "area" ? "var(--accent)" : "transparent",
-                color: tab === "area" ? "var(--text)" : "var(--text-2)",
-              }}
-            >
-              <CropIcon className="h-3.5 w-3.5" />
-              <span>Selected Area</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setTab("area")}
+            className="inline-flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-semibold transition-colors"
+            style={{
+              borderColor: tab === "area" ? "var(--accent)" : "transparent",
+              color: tab === "area" ? "var(--text)" : "var(--text-2)",
+            }}
+          >
+            <CropIcon className="h-3.5 w-3.5" />
+            <span>Custom Area</span>
+          </button>
         </div>
 
         {/* Live Thumbnails Grid */}
@@ -338,9 +338,9 @@ export function SourcePickerModal({
             </div>
           )}
 
-          {tab === "area" && captureRegion && (
+          {tab === "area" && (
             <div
-              className="flex flex-col items-center justify-center gap-3 rounded-xl p-6 text-center"
+              className="flex flex-col items-center justify-center gap-4 rounded-xl p-6 text-center"
               style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
             >
               <div
@@ -349,15 +349,39 @@ export function SourcePickerModal({
               >
                 <CropIcon className="h-6 w-6" />
               </div>
-              <div>
-                <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
-                  Locked Capture Region
+              {captureRegion ? (
+                <div>
+                  <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                    Selected Capture Area
+                  </div>
+                  <div className="mt-1 font-mono text-xs" style={{ color: "var(--text-2)" }}>
+                    {captureRegion.width} × {captureRegion.height} px at ({captureRegion.x},{" "}
+                    {captureRegion.y})
+                  </div>
                 </div>
-                <div className="mt-1 font-mono text-xs" style={{ color: "var(--text-2)" }}>
-                  {captureRegion.width} × {captureRegion.height} px at ({captureRegion.x},{" "}
-                  {captureRegion.y})
+              ) : (
+                <div>
+                  <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                    No capture area selected yet
+                  </div>
+                  <div className="mt-1 text-xs" style={{ color: "var(--text-2)" }}>
+                    Click below to draw the exact screen region you want to record.
+                  </div>
                 </div>
-              </div>
+              )}
+              {onRequestPickArea && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onRequestPickArea();
+                  }}
+                  className="rf-btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold"
+                >
+                  <CropIcon className="h-3.5 w-3.5" />
+                  <span>{captureRegion ? "Select a different area…" : "Select area on screen…"}</span>
+                </button>
+              )}
             </div>
           )}
         </div>

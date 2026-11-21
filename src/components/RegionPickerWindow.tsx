@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CaptureRegion } from "../types";
+import { CheckIcon, RecordDotIcon, RotateCcwIcon } from "./Icons";
 
 type SelectionRect = {
   x: number;
@@ -52,33 +53,14 @@ function readParams() {
   const params = new URLSearchParams(window.location.search);
   const displayWidth = Number(params.get("displayWidth")) || window.innerWidth;
   const displayHeight = Number(params.get("displayHeight")) || window.innerHeight;
-  const initX = params.get("initX");
-  const initY = params.get("initY");
-  const initW = params.get("initW");
-  const initH = params.get("initH");
-
-  let initial: SelectionRect | null = null;
-  if (initX !== null && initY !== null && initW !== null && initH !== null) {
-    const scaleX = window.innerWidth / Math.max(displayWidth, 1);
-    const scaleY = window.innerHeight / Math.max(displayHeight, 1);
-    const w = Number(initW) * scaleX;
-    const h = Number(initH) * scaleY;
-    if (w >= MIN_SELECTION_SIZE && h >= MIN_SELECTION_SIZE) {
-      initial = {
-        x: Number(initX) * scaleX,
-        y: Number(initY) * scaleY,
-        width: w,
-        height: h,
-      };
-    }
-  }
-
-  return { displayWidth, displayHeight, initial };
+  return { displayWidth, displayHeight };
 }
 
 export function RegionPickerWindow() {
-  const { displayWidth, displayHeight, initial } = useMemo(readParams, []);
-  const [selection, setSelection] = useState<SelectionRect | null>(initial);
+  const { displayWidth, displayHeight } = useMemo(readParams, []);
+  // Always start with null selection so the user draws their own area
+  const [selection, setSelection] = useState<SelectionRect | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dragRef = useRef<{
     mode: DragMode;
@@ -115,15 +97,18 @@ export function RegionPickerWindow() {
     await getCurrentWebviewWindow().close();
   }, []);
 
-  const confirm = useCallback(async () => {
-    if (!selection || selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE) {
-      setError("Selection is too small (minimum 64 × 64).");
-      return;
-    }
-    const region = toAlignedRegion(selection);
-    await emit("region-picker:selected", { region });
-    await getCurrentWebviewWindow().close();
-  }, [selection, toAlignedRegion]);
+  const confirm = useCallback(
+    async (startRecording: boolean) => {
+      if (!selection || selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE) {
+        setError("Click and drag a capture area at least 64 × 64 pixels.");
+        return;
+      }
+      const region = toAlignedRegion(selection);
+      await emit("region-picker:selected", { region, startRecording });
+      await getCurrentWebviewWindow().close();
+    },
+    [selection, toAlignedRegion],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -132,7 +117,7 @@ export function RegionPickerWindow() {
         void cancel();
       } else if (event.key === "Enter" && selection) {
         event.preventDefault();
-        void confirm();
+        void confirm(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -143,6 +128,7 @@ export function RegionPickerWindow() {
     if (event.button !== 0 && event.button !== 2) return;
     event.stopPropagation();
     setError(null);
+    setIsDragging(true);
     dragRef.current = {
       mode,
       startX: event.clientX,
@@ -200,10 +186,11 @@ export function RegionPickerWindow() {
   const onPointerUp = () => {
     const drag = dragRef.current;
     dragRef.current = null;
+    setIsDragging(false);
     if (drag?.mode === "new") {
       setSelection((curr) => {
         if (!curr || curr.width < MIN_SELECTION_SIZE || curr.height < MIN_SELECTION_SIZE) {
-          setError("Drag a larger area (at least 64 × 64 pixels).");
+          setError("Drag a larger area on screen (minimum 64 × 64 pixels).");
           return null;
         }
         return curr;
@@ -212,11 +199,16 @@ export function RegionPickerWindow() {
   };
 
   const alignedPreview =
-    selection && selection.width >= MIN_SELECTION_SIZE && selection.height >= MIN_SELECTION_SIZE
+    selection && selection.width >= 16 && selection.height >= 16
       ? toAlignedRegion(selection)
       : null;
 
-  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 68 : true;
+  const canConfirm =
+    selection !== null &&
+    selection.width >= MIN_SELECTION_SIZE &&
+    selection.height >= MIN_SELECTION_SIZE;
+
+  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 76 : true;
 
   return (
     <div
@@ -227,32 +219,58 @@ export function RegionPickerWindow() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
+      {/* Top guidance bar */}
       <div
-        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-4 py-2 text-xs font-medium shadow-2xl"
+        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-5 py-2.5 text-xs font-medium shadow-2xl"
         style={{
-          background: "rgba(12, 14, 20, 0.92)",
-          border: "1px solid rgba(255,255,255,0.16)",
-          color: "#f4f4f5",
+          background: "rgba(22, 16, 16, 0.95)",
+          border: "1px solid rgba(255, 235, 225, 0.18)",
+          color: "#f7f1ee",
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <span>Click and drag to select capture area</span>
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ background: "var(--accent)" }}
+        />
+        <span>
+          {canConfirm
+            ? "Drag corners to fine-tune area, then click Record this area"
+            : "Click and drag anywhere on screen to select the recording area"}
+        </span>
         <span className="opacity-40">·</span>
         <span className="font-mono text-[11px] opacity-80">Esc to cancel</span>
         <button
           type="button"
           onClick={() => void cancel()}
-          className="ml-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-          style={{ background: "rgba(255,255,255,0.14)", color: "#ffffff" }}
+          className="ml-1 rounded-full px-3 py-1 text-[11px] font-semibold"
+          style={{ background: "rgba(255,235,225,0.14)", color: "#ffffff" }}
         >
           Cancel
         </button>
       </div>
 
+      {/* Center prompt when user hasn't dragged an area yet */}
+      {!selection && !error && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2 rounded-2xl px-7 py-5 text-center shadow-2xl"
+          style={{
+            background: "rgba(20, 14, 14, 0.88)",
+            border: "1px dashed rgba(255, 107, 74, 0.55)",
+            color: "#f7f1ee",
+          }}
+        >
+          <div className="text-sm font-semibold">Click &amp; drag to draw capture area</div>
+          <div className="text-xs" style={{ color: "#c9b5b2" }}>
+            Release to record the selected region or adjust its handles
+          </div>
+        </div>
+      )}
+
       {error && (
         <div
           className="fixed left-1/2 top-20 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-medium shadow-xl"
-          style={{ background: "rgba(220, 38, 38, 0.92)", color: "#ffffff" }}
+          style={{ background: "rgba(220, 38, 38, 0.94)", color: "#ffffff" }}
         >
           {error}
         </div>
@@ -270,6 +288,21 @@ export function RegionPickerWindow() {
           onPointerDown={(e) => startDrag(e, "move")}
         >
           <div className="rf-region-picker-grid" />
+
+          {/* Live dimension badge while dragging */}
+          {alignedPreview && (
+            <div
+              className="pointer-events-none absolute left-2 top-2 rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold shadow"
+              style={{
+                background: "rgba(20, 14, 14, 0.9)",
+                color: "var(--accent)",
+                border: "1px solid rgba(255, 107, 74, 0.4)",
+              }}
+            >
+              {alignedPreview.width} × {alignedPreview.height}
+            </div>
+          )}
+
           {HANDLES.map((h) => (
             <div
               key={h.id}
@@ -279,38 +312,71 @@ export function RegionPickerWindow() {
             />
           ))}
 
-          {alignedPreview && (
+          {!isDragging && canConfirm && alignedPreview && (
             <div
               className="rf-region-toolbar"
               style={toolbarBelow ? { top: "calc(100% + 12px)" } : { bottom: "calc(100% + 12px)" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
               <span
-                className="inline-flex h-8 items-center rounded-lg px-2.5 font-mono text-xs font-semibold shadow-lg"
+                className="inline-flex h-9 items-center rounded-xl px-3 font-mono text-xs font-semibold shadow-lg"
                 style={{
-                  background: "rgba(12, 13, 18, 0.94)",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  background: "rgba(20, 15, 15, 0.95)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
                   color: "var(--accent)",
                 }}
               >
                 {alignedPreview.width} × {alignedPreview.height}
               </span>
+
               <button
                 type="button"
-                onClick={() => void confirm()}
-                className="h-8 rounded-lg px-3.5 text-xs font-semibold shadow-lg"
-                style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                onClick={() => void confirm(true)}
+                className="rf-btn-primary inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg"
               >
-                Use this area (Enter)
+                <RecordDotIcon className="h-3.5 w-3.5" />
+                <span>Record this area (Enter)</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => void confirm(false)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-lg"
+                style={{
+                  background: "rgba(24, 18, 18, 0.95)",
+                  border: "1px solid rgba(255, 235, 225, 0.22)",
+                  color: "#f7f1ee",
+                }}
+              >
+                <CheckIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
+                <span>Apply area</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelection(null);
+                  setError(null);
+                }}
+                className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-xs font-medium shadow-lg"
+                style={{
+                  background: "rgba(20, 15, 15, 0.92)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
+                  color: "#d4c3c0",
+                }}
+              >
+                <RotateCcwIcon className="h-3 w-3" />
+                <span>Redraw</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => void cancel()}
-                className="h-8 rounded-lg px-3 text-xs font-medium shadow-lg"
+                className="h-9 rounded-xl px-3 text-xs font-medium shadow-lg"
                 style={{
-                  background: "rgba(12, 13, 18, 0.92)",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
-                  color: "#e4e4e7",
+                  background: "rgba(20, 15, 15, 0.92)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
+                  color: "#f0e6e4",
                 }}
               >
                 Cancel

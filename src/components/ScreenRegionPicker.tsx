@@ -24,7 +24,6 @@ const PICKER_WINDOW_LABEL = "region-picker";
 
 export function ScreenRegionPicker({
   display,
-  captureRegion,
   disabled = false,
   pickRequest,
   onCaptureRegionChange,
@@ -78,15 +77,16 @@ export function ScreenRegionPicker({
           unlistenCancelled = null;
         };
 
-        unlistenSelected = await listen<{ region: CaptureRegion }>(
+        unlistenSelected = await listen<{ region: CaptureRegion; startRecording?: boolean }>(
           "region-picker:selected",
           (event) => {
             cleanup();
             void (async () => {
               const region = event.payload.region;
+              const shouldStart = Boolean(event.payload.startRecording ?? req.startAfter);
               await onCaptureRegionChange(region);
               await restoreMain();
-              if (req.startAfter) {
+              if (shouldStart) {
                 await onSelectionComplete?.(region);
               }
             })();
@@ -99,24 +99,25 @@ export function ScreenRegionPicker({
           onCancelled?.();
         });
 
+        // Do NOT pass any pre-decided initX/initY/initW/initH — always let the user drag a fresh area.
         const params = new URLSearchParams({
           picker: "1",
           displayWidth: String(display.width),
           displayHeight: String(display.height),
         });
-        if (captureRegion) {
-          params.set("initX", String(captureRegion.x));
-          params.set("initY", String(captureRegion.y));
-          params.set("initW", String(captureRegion.width));
-          params.set("initH", String(captureRegion.height));
-        }
+
+        const dpr = window.devicePixelRatio || 1;
+        const logicalX = Math.round(display.x / dpr);
+        const logicalY = Math.round(display.y / dpr);
+        const logicalW = Math.max(320, Math.round(display.width / dpr));
+        const logicalH = Math.max(240, Math.round(display.height / dpr));
 
         const picker = new WebviewWindow(PICKER_WINDOW_LABEL, {
           url: `/?${params.toString()}`,
-          x: display.x,
-          y: display.y,
-          width: display.width,
-          height: display.height,
+          x: logicalX,
+          y: logicalY,
+          width: logicalW,
+          height: logicalH,
           decorations: false,
           resizable: false,
           alwaysOnTop: true,
@@ -130,15 +131,16 @@ export function ScreenRegionPicker({
           void picker.once("tauri://created", () => resolve());
           void picker.once("tauri://error", (event) => {
             cleanup();
-            void restoreMain();
             reject(event.payload);
           });
         });
       } catch {
+        // Fallback to inline full-window region selector if OS blocks transparent secondary window
         await restoreMain();
+        setBrowserOverlayRequest(req);
       }
     },
-    [captureRegion, disabled, display, onCancelled, onCaptureRegionChange, onSelectionComplete, restoreMain],
+    [disabled, display, onCancelled, onCaptureRegionChange, onSelectionComplete, restoreMain],
   );
 
   useEffect(() => {
@@ -152,13 +154,13 @@ export function ScreenRegionPicker({
   return (
     <InlineRegionOverlay
       display={display}
-      initialRegion={captureRegion}
-      onConfirm={(region) => {
-        const startAfter = browserOverlayRequest.startAfter;
+      initialRegion={null}
+      onConfirm={(region, startRecording) => {
+        const shouldStart = startRecording || browserOverlayRequest.startAfter;
         setBrowserOverlayRequest(null);
         void (async () => {
           await onCaptureRegionChange(region);
-          if (startAfter) {
+          if (shouldStart) {
             await onSelectionComplete?.(region);
           }
         })();

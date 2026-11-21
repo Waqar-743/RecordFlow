@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CaptureRegion, DisplayInfo } from "../types";
+import { CheckIcon, RecordDotIcon, RotateCcwIcon } from "./Icons";
 
 type SelectionRect = { x: number; y: number; width: number; height: number };
 type DragMode = "new" | "move" | "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -35,25 +36,19 @@ function alignDim(v: number, max: number): number {
 
 type Props = {
   display: DisplayInfo;
-  initialRegion: CaptureRegion | null;
-  onConfirm: (region: CaptureRegion) => void;
+  initialRegion?: CaptureRegion | null;
+  onConfirm: (region: CaptureRegion, startRecording: boolean) => void;
   onCancel: () => void;
 };
 
 /**
- * Full-viewport translucent region selector overlay used in browser preview mode.
- * Mirrors the native Tauri RegionPickerWindow interaction identically.
+ * Full-viewport translucent region selector overlay.
+ * Starts clean (no pre-decided selection) so the user can drag to choose their area
+ * and immediately record it or apply it to the preview stage.
  */
-export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCancel }: Props) {
-  const [selection, setSelection] = useState<SelectionRect | null>(() => {
-    if (!initialRegion) return null;
-    const sx = window.innerWidth / Math.max(display.width, 1);
-    const sy = window.innerHeight / Math.max(display.height, 1);
-    const w = initialRegion.width * sx;
-    const h = initialRegion.height * sy;
-    if (w < MIN_SELECTION_SIZE || h < MIN_SELECTION_SIZE) return null;
-    return { x: initialRegion.x * sx, y: initialRegion.y * sy, width: w, height: h };
-  });
+export function InlineRegionOverlay({ display, onConfirm, onCancel }: Props) {
+  const [selection, setSelection] = useState<SelectionRect | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dragRef = useRef<{
     mode: DragMode;
@@ -78,13 +73,16 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
     [display.height, display.width],
   );
 
-  const confirm = useCallback(() => {
-    if (!selection || selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE) {
-      setError("Drag a capture area at least 64 × 64 pixels.");
-      return;
-    }
-    onConfirm(toRegion(selection));
-  }, [onConfirm, selection, toRegion]);
+  const confirm = useCallback(
+    (startRecording: boolean) => {
+      if (!selection || selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE) {
+        setError("Click and drag a capture area at least 64 × 64 pixels.");
+        return;
+      }
+      onConfirm(toRegion(selection), startRecording);
+    },
+    [onConfirm, selection, toRegion],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,7 +91,7 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
         onCancel();
       } else if (e.key === "Enter" && selection) {
         e.preventDefault();
-        confirm();
+        confirm(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -104,6 +102,7 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
     if (e.button !== 0) return;
     e.stopPropagation();
     setError(null);
+    setIsDragging(true);
     dragRef.current = { mode, startX: e.clientX, startY: e.clientY, orig: selection };
     if (mode === "new") {
       setSelection({ x: e.clientX, y: e.clientY, width: 0, height: 0 });
@@ -153,6 +152,7 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
   const onPointerUp = () => {
     const drag = dragRef.current;
     dragRef.current = null;
+    setIsDragging(false);
     if (drag?.mode === "new") {
       setSelection((curr) => {
         if (!curr || curr.width < MIN_SELECTION_SIZE || curr.height < MIN_SELECTION_SIZE) {
@@ -165,11 +165,16 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
   };
 
   const preview =
-    selection && selection.width >= MIN_SELECTION_SIZE && selection.height >= MIN_SELECTION_SIZE
+    selection && selection.width >= 16 && selection.height >= 16
       ? toRegion(selection)
       : null;
 
-  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 68 : true;
+  const canConfirm =
+    selection !== null &&
+    selection.width >= MIN_SELECTION_SIZE &&
+    selection.height >= MIN_SELECTION_SIZE;
+
+  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 76 : true;
 
   return (
     <div
@@ -182,31 +187,56 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
     >
       {/* Top floating guidance pill */}
       <div
-        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-4 py-2 text-xs font-medium shadow-2xl"
+        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-5 py-2.5 text-xs font-medium shadow-2xl"
         style={{
-          background: "rgba(15, 17, 22, 0.92)",
-          border: "1px solid rgba(255, 255, 255, 0.14)",
-          color: "#f4f4f5",
+          background: "rgba(22, 16, 16, 0.95)",
+          border: "1px solid rgba(255, 235, 225, 0.18)",
+          color: "#f7f1ee",
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <span>Click and drag to select capture region</span>
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ background: "var(--accent)" }}
+        />
+        <span>
+          {canConfirm
+            ? "Drag handles to adjust area, then click Record this area"
+            : "Click and drag anywhere on screen to select your capture area"}
+        </span>
         <span className="opacity-40">·</span>
         <span className="font-mono text-[11px] opacity-75">Esc to cancel</span>
         <button
           type="button"
           onClick={onCancel}
-          className="ml-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors"
-          style={{ background: "rgba(255,255,255,0.12)", color: "#ffffff" }}
+          className="ml-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors"
+          style={{ background: "rgba(255,235,225,0.14)", color: "#ffffff" }}
         >
           Cancel
         </button>
       </div>
 
+      {/* Center prompt when no area has been drawn yet */}
+      {!selection && !error && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2 rounded-2xl px-7 py-5 text-center shadow-2xl"
+          style={{
+            background: "rgba(20, 14, 14, 0.88)",
+            border: "1px dashed rgba(255, 107, 74, 0.55)",
+            color: "#f7f1ee",
+          }}
+        >
+          <div className="text-sm font-semibold">Click &amp; drag to draw capture area</div>
+          <div className="text-xs" style={{ color: "#c9b5b2" }}>
+            Release to record the selected region or adjust its handles
+          </div>
+        </div>
+      )}
+
       {error && (
         <div
           className="fixed left-1/2 top-20 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-medium shadow-xl"
-          style={{ background: "rgba(220, 38, 38, 0.92)", color: "#ffffff" }}
+          style={{ background: "rgba(220, 38, 38, 0.94)", color: "#ffffff" }}
         >
           {error}
         </div>
@@ -224,6 +254,20 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
           onPointerDown={(e) => startDrag(e, "move")}
         >
           <div className="rf-region-picker-grid" />
+
+          {preview && (
+            <div
+              className="pointer-events-none absolute left-2 top-2 rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold shadow"
+              style={{
+                background: "rgba(20, 14, 14, 0.9)",
+                color: "var(--accent)",
+                border: "1px solid rgba(255, 107, 74, 0.4)",
+              }}
+            >
+              {preview.width} × {preview.height}
+            </div>
+          )}
+
           {HANDLES.map((h) => (
             <div
               key={h.id}
@@ -233,38 +277,71 @@ export function InlineRegionOverlay({ display, initialRegion, onConfirm, onCance
             />
           ))}
 
-          {preview && (
+          {!isDragging && canConfirm && preview && (
             <div
               className="rf-region-toolbar"
               style={toolbarBelow ? { top: "calc(100% + 12px)" } : { bottom: "calc(100% + 12px)" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
               <span
-                className="inline-flex h-8 items-center rounded-lg px-2.5 font-mono text-xs font-semibold shadow-lg"
+                className="inline-flex h-9 items-center rounded-xl px-3 font-mono text-xs font-semibold shadow-lg"
                 style={{
-                  background: "rgba(12, 13, 18, 0.94)",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  background: "rgba(20, 15, 15, 0.95)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
                   color: "var(--accent)",
                 }}
               >
                 {preview.width} × {preview.height}
               </span>
+
               <button
                 type="button"
-                onClick={confirm}
-                className="h-8 rounded-lg px-3.5 text-xs font-semibold shadow-lg transition-opacity hover:opacity-90"
-                style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+                onClick={() => confirm(true)}
+                className="rf-btn-primary inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg"
               >
-                Lock area (Enter)
+                <RecordDotIcon className="h-3.5 w-3.5" />
+                <span>Record this area (Enter)</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => confirm(false)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-lg"
+                style={{
+                  background: "rgba(24, 18, 18, 0.95)",
+                  border: "1px solid rgba(255, 235, 225, 0.22)",
+                  color: "#f7f1ee",
+                }}
+              >
+                <CheckIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
+                <span>Apply area</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelection(null);
+                  setError(null);
+                }}
+                className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-xs font-medium shadow-lg"
+                style={{
+                  background: "rgba(20, 15, 15, 0.92)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
+                  color: "#d4c3c0",
+                }}
+              >
+                <RotateCcwIcon className="h-3 w-3" />
+                <span>Redraw</span>
+              </button>
+
               <button
                 type="button"
                 onClick={onCancel}
-                className="h-8 rounded-lg px-3 text-xs font-medium shadow-lg"
+                className="h-9 rounded-xl px-3 text-xs font-medium shadow-lg"
                 style={{
-                  background: "rgba(12, 13, 18, 0.92)",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
-                  color: "#e4e4e7",
+                  background: "rgba(20, 15, 15, 0.92)",
+                  border: "1px solid rgba(255, 235, 225, 0.16)",
+                  color: "#f0e6e4",
                 }}
               >
                 Cancel
