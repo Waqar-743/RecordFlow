@@ -1,6 +1,6 @@
 use crate::error::RecorderError;
 use crate::state::app_state::AppState;
-use crate::utils::config::get_default_recordings_path;
+use crate::utils::config::{get_default_recordings_path, set_custom_recordings_path};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -26,6 +26,20 @@ fn file_name_only(path: &PathBuf) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or_default()
         .to_string()
+}
+
+/// Return the currently active, verified recordings save folder.
+#[tauri::command]
+pub async fn get_recordings_folder() -> Result<String, RecorderError> {
+    let dir = get_default_save_location()?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// Update the recordings save folder to a user-selected directory.
+#[tauri::command]
+pub async fn set_recordings_folder(path: String) -> Result<String, RecorderError> {
+    let dir = set_custom_recordings_path(&path)?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 /// Return metadata for the last output file tracked by the app state.
@@ -98,8 +112,6 @@ pub async fn delete_recording(path: String) -> Result<(), RecorderError> {
 #[tauri::command]
 pub async fn open_recordings_folder() -> Result<(), RecorderError> {
     let dir = get_default_save_location()?;
-    fs::create_dir_all(&dir)
-        .map_err(|e| RecorderError::file_error(format!("Failed to create recordings folder: {e}")))?;
 
     Command::new("explorer.exe")
         .arg(dir)

@@ -10,7 +10,8 @@ use crate::commands::devices::{
     get_system_audio_devices, get_window_thumbnail,
 };
 use crate::commands::files::{
-    delete_recording, get_last_recording_info, open_recording_in_explorer, open_recordings_folder,
+    delete_recording, get_last_recording_info, get_recordings_folder, open_recording_in_explorer,
+    open_recordings_folder, set_recordings_folder,
 };
 use crate::commands::history::{clear_timer_history, delete_timer_session, get_timer_history};
 use crate::commands::hotkeys::{
@@ -120,6 +121,8 @@ pub fn run() {
             get_timer_state,
             // Files
             get_last_recording_info,
+            get_recordings_folder,
+            set_recordings_folder,
             open_recording_in_explorer,
             delete_recording,
             open_recordings_folder,
