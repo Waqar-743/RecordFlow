@@ -32,6 +32,145 @@ export interface RenderSources {
   customBgImage: HTMLImageElement | null;
 }
 
+// ============================================================================
+// Offscreen caches for static background, frame drop-shadow, camera shadow,
+// and fast downsampled privacy blur (eliminates per-frame Gaussian blur cost)
+// ============================================================================
+let cachedBackdropCanvas: HTMLCanvasElement | null = null;
+let cachedBackdropKey = "";
+
+let cachedCamShadowCanvas: HTMLCanvasElement | null = null;
+let cachedCamShadowKey = "";
+let cachedCamShadowPad = 0;
+
+let blurScratchCanvas: HTMLCanvasElement | null = null;
+
+function renderCachedBackdrop(
+  project: EditorProject,
+  geom: CanvasGeometry,
+  radius: number,
+  shadowStrength: number,
+  customBgImage: HTMLImageElement | null,
+): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const { canvasW, canvasH, frameX, frameY, frameW, frameH } = geom;
+  const customReady = Boolean(
+    project.canvas.customBackgroundUrl &&
+      customBgImage &&
+      customBgImage.complete &&
+      customBgImage.naturalWidth > 0,
+  );
+  const key = [
+    canvasW,
+    canvasH,
+    project.canvas.backgroundId,
+    customReady ? project.canvas.customBackgroundUrl : "",
+    frameX.toFixed(1),
+    frameY.toFixed(1),
+    frameW.toFixed(1),
+    frameH.toFixed(1),
+    radius.toFixed(1),
+    shadowStrength.toFixed(3),
+  ].join("|");
+
+  if (cachedBackdropCanvas && cachedBackdropKey === key) {
+    return cachedBackdropCanvas;
+  }
+
+  if (!cachedBackdropCanvas) {
+    cachedBackdropCanvas = document.createElement("canvas");
+  }
+  if (cachedBackdropCanvas.width !== canvasW || cachedBackdropCanvas.height !== canvasH) {
+    cachedBackdropCanvas.width = canvasW;
+    cachedBackdropCanvas.height = canvasH;
+  }
+
+  const bCtx = cachedBackdropCanvas.getContext("2d", { alpha: false });
+  if (!bCtx) return null;
+
+  bCtx.clearRect(0, 0, canvasW, canvasH);
+
+  // 1. Background (Custom image or curated preset)
+  if (customReady && customBgImage) {
+    drawCoverImage(
+      bCtx,
+      customBgImage,
+      customBgImage.naturalWidth,
+      customBgImage.naturalHeight,
+      0,
+      0,
+      canvasW,
+      canvasH,
+    );
+  } else {
+    const bg = getBackgroundById(project.canvas.backgroundId);
+    bg.draw(bCtx, canvasW, canvasH);
+  }
+
+  // 2. Presentation frame drop shadow (rasterized once into the backdrop cache)
+  if (shadowStrength > 0.01) {
+    bCtx.save();
+    bCtx.shadowColor = `rgba(0, 0, 0, ${(0.55 * shadowStrength).toFixed(3)})`;
+    bCtx.shadowBlur = Math.round(54 * shadowStrength * (canvasW / 1280));
+    bCtx.shadowOffsetY = Math.round(22 * shadowStrength * (canvasH / 720));
+    bCtx.fillStyle = "#100c0c";
+    bCtx.beginPath();
+    bCtx.roundRect(frameX, frameY, frameW, frameH, radius);
+    bCtx.fill();
+    bCtx.restore();
+  }
+
+  cachedBackdropKey = key;
+  return cachedBackdropCanvas;
+}
+
+function getCachedCameraShadow(
+  w: number,
+  h: number,
+  r: number,
+  shadowPct: number,
+): { canvas: HTMLCanvasElement; pad: number } | null {
+  if (typeof document === "undefined" || shadowPct <= 0) return null;
+  const rw = Math.round(w);
+  const rh = Math.round(h);
+  const rr = Number(r.toFixed(1));
+  const key = `${rw}x${rh}|${rr}|${shadowPct}`;
+
+  if (cachedCamShadowCanvas && cachedCamShadowKey === key) {
+    return { canvas: cachedCamShadowCanvas, pad: cachedCamShadowPad };
+  }
+
+  const blur = Math.round(32 * (shadowPct / 100));
+  const offsetY = Math.round(10 * (shadowPct / 100));
+  const pad = blur + Math.abs(offsetY) + 8;
+  const cw = rw + pad * 2;
+  const ch = rh + pad * 2;
+
+  if (!cachedCamShadowCanvas) {
+    cachedCamShadowCanvas = document.createElement("canvas");
+  }
+  cachedCamShadowCanvas.width = cw;
+  cachedCamShadowCanvas.height = ch;
+
+  const sCtx = cachedCamShadowCanvas.getContext("2d");
+  if (!sCtx) return null;
+
+  sCtx.clearRect(0, 0, cw, ch);
+  sCtx.save();
+  sCtx.shadowColor = `rgba(0, 0, 0, ${(0.55 * (shadowPct / 100)).toFixed(3)})`;
+  sCtx.shadowBlur = blur;
+  sCtx.shadowOffsetY = offsetY;
+  sCtx.fillStyle = "#000000";
+  sCtx.beginPath();
+  sCtx.roundRect(pad, pad, rw, rh, rr);
+  sCtx.fill();
+  sCtx.restore();
+
+  cachedCamShadowKey = key;
+  cachedCamShadowPad = pad;
+  return { canvas: cachedCamShadowCanvas, pad };
+}
+
 export function getAspectDimensions(
   aspectRatio: AspectRatioId,
   sourceWidth: number,
@@ -158,7 +297,6 @@ export function sampleCursorAtTime(
   const last = samples[samples.length - 1];
   if (time >= last.t) return { x: last.x, y: last.y };
 
-  // Binary search for bracketing samples
   let lo = 0;
   let hi = samples.length - 1;
   while (lo + 1 < hi) {
@@ -250,7 +388,7 @@ function drawCoverImage(
 
 /**
  * Deterministic composition renderer shared by the real-time Edit canvas AND
- * the Local Export Engine (ensuring 100% WYSIWYG export fidelity).
+ * the Local Export Engine (ensuring 100% WYSIWYG export fidelity at maximum speed).
  */
 export function renderCompositionFrame(
   ctx: CanvasRenderingContext2D,
@@ -268,43 +406,28 @@ export function renderCompositionFrame(
   const hasCamera = Boolean(sources.cameraVideo);
   const geom = computeCanvasGeometry(project, canvasW, canvasH, hasCamera);
 
-  ctx.save();
-  ctx.clearRect(0, 0, canvasW, canvasH);
-
-  // 1. Background (Custom image or curated preset)
-  if (project.canvas.customBackgroundUrl && sources.customBgImage && sources.customBgImage.complete && sources.customBgImage.naturalWidth > 0) {
-    drawCoverImage(
-      ctx,
-      sources.customBgImage,
-      sources.customBgImage.naturalWidth,
-      sources.customBgImage.naturalHeight,
-      0,
-      0,
-      canvasW,
-      canvasH,
-    );
-  } else {
-    const bg = getBackgroundById(project.canvas.backgroundId);
-    bg.draw(ctx, canvasW, canvasH);
-  }
-
-  // 2. Presentation frame drop shadow
   const radius = Math.min(
     (project.canvas.cornerRadius / 1080) * Math.min(canvasW, canvasH) * 1.15,
     Math.min(geom.frameW, geom.frameH) / 4,
   );
   const shadowStrength = project.canvas.shadow / 100;
 
-  if (shadowStrength > 0.01) {
-    ctx.save();
-    ctx.shadowColor = `rgba(0, 0, 0, ${(0.55 * shadowStrength).toFixed(3)})`;
-    ctx.shadowBlur = Math.round(54 * shadowStrength * (canvasW / 1280));
-    ctx.shadowOffsetY = Math.round(22 * shadowStrength * (canvasH / 720));
-    ctx.fillStyle = "#100c0c";
-    ctx.beginPath();
-    ctx.roundRect(geom.frameX, geom.frameY, geom.frameW, geom.frameH, radius);
-    ctx.fill();
-    ctx.restore();
+  ctx.save();
+
+  // 1 & 2. Draw cached static background + presentation frame drop shadow in one blit
+  const cachedBackdrop = renderCachedBackdrop(
+    project,
+    geom,
+    radius,
+    shadowStrength,
+    sources.customBgImage,
+  );
+  if (cachedBackdrop) {
+    ctx.drawImage(cachedBackdrop, 0, 0);
+  } else {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    const bg = getBackgroundById(project.canvas.backgroundId);
+    bg.draw(ctx, canvasW, canvasH);
   }
 
   // 3. Clipped Screen Video + Zoom + Blur Regions + Cursor Overlay
@@ -324,9 +447,11 @@ export function renderCompositionFrame(
   const pivotY = geom.frameY + zoom.focusY * geom.frameH;
 
   ctx.save();
-  ctx.translate(pivotX, pivotY);
-  ctx.scale(zoom.scale, zoom.scale);
-  ctx.translate(-pivotX, -pivotY);
+  if (Math.abs(zoom.scale - 1) > 0.001) {
+    ctx.translate(pivotX, pivotY);
+    ctx.scale(zoom.scale, zoom.scale);
+    ctx.translate(-pivotX, -pivotY);
+  }
 
   // Draw screen source
   const screenSrc = sources.screenVideo;
@@ -346,7 +471,13 @@ export function renderCompositionFrame(
   for (const blur of project.blurs) {
     const active = blur.alwaysVisible || (time >= blur.startTime && time <= blur.endTime);
     if (!active) continue;
-    drawBlurRegion(ctx, screenSrc, geom, blur, project.canvas.framing, options?.showGuides && options?.selectedBlurId === blur.id);
+    drawBlurRegion(
+      ctx,
+      screenSrc,
+      geom,
+      blur,
+      options?.showGuides && options?.selectedBlurId === blur.id,
+    );
   }
 
   // Draw Cursor & Click Ripples (from CursorTrackData)
@@ -401,7 +532,6 @@ function drawBlurRegion(
   screenSrc: HTMLVideoElement | HTMLCanvasElement | null,
   geom: CanvasGeometry,
   blur: BlurRegion,
-  framing: "fit" | "fill",
   isSelected?: boolean,
 ) {
   const bx = geom.frameX + blur.x * geom.frameW;
@@ -415,18 +545,36 @@ function drawBlurRegion(
   ctx.roundRect(bx, by, bw, bh, br);
   ctx.clip();
 
-  if (screenSrc) {
+  if (screenSrc && typeof document !== "undefined") {
     const sw = screenSrc instanceof HTMLVideoElement ? screenSrc.videoWidth : screenSrc.width;
     const sh = screenSrc instanceof HTMLVideoElement ? screenSrc.videoHeight : screenSrc.height;
     if (sw > 0 && sh > 0) {
-      const blurPx = Math.max(4, Math.round((blur.intensity / 1080) * geom.canvasH * 1.4));
-      ctx.filter = `blur(${blurPx}px)`;
-      if (framing === "fill") {
-        drawCoverImage(ctx, screenSrc, sw, sh, geom.frameX, geom.frameY, geom.frameW, geom.frameH);
-      } else {
-        ctx.drawImage(screenSrc, geom.frameX, geom.frameY, geom.frameW, geom.frameH);
+      // Fast hardware-accelerated downscale-upscale blur on ONLY the cropped region
+      const downFactor = Math.max(6, Math.min(28, Math.round(blur.intensity * 0.85)));
+      const smallW = Math.max(8, Math.round(bw / downFactor));
+      const smallH = Math.max(8, Math.round(bh / downFactor));
+
+      if (!blurScratchCanvas) {
+        blurScratchCanvas = document.createElement("canvas");
       }
-      ctx.filter = "none";
+      if (blurScratchCanvas.width < smallW || blurScratchCanvas.height < smallH) {
+        blurScratchCanvas.width = Math.max(smallW, 128);
+        blurScratchCanvas.height = Math.max(smallH, 128);
+      }
+      const sCtx = blurScratchCanvas.getContext("2d");
+      if (sCtx) {
+        sCtx.imageSmoothingEnabled = true;
+        sCtx.imageSmoothingQuality = "medium";
+        const sx = blur.x * sw;
+        const sy = blur.y * sh;
+        const sWidth = Math.max(4, blur.width * sw);
+        const sHeight = Math.max(4, blur.height * sh);
+        sCtx.clearRect(0, 0, smallW, smallH);
+        sCtx.drawImage(screenSrc, sx, sy, sWidth, sHeight, 0, 0, smallW, smallH);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(blurScratchCanvas, 0, 0, smallW, smallH, bx, by, bw, bh);
+      }
     }
   }
 
@@ -501,9 +649,6 @@ function drawCursorOverlay(
   // Crisp studio pointer arrow
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
-  ctx.shadowBlur = 6 * scaleFactor;
-  ctx.shadowOffsetY = 2 * scaleFactor;
 
   ctx.beginPath();
   ctx.moveTo(0, 0);
@@ -538,22 +683,24 @@ function drawCameraOverlay(
       ? Math.min(rect.w, rect.h) / 2
       : camera.shape === "square"
         ? 4
-        : Math.min((camera.cornerRadius / 100) * Math.min(rect.w, rect.h) * 0.5, Math.min(rect.w, rect.h) / 2);
+        : Math.min(
+            (camera.cornerRadius / 100) * Math.min(rect.w, rect.h) * 0.5,
+            Math.min(rect.w, rect.h) / 2,
+          );
 
   ctx.save();
   ctx.globalAlpha = camera.opacity;
 
-  // Drop shadow behind camera bubble
+  // Cached drop shadow behind camera bubble
   if (camera.shadow > 0) {
-    ctx.save();
-    ctx.shadowColor = `rgba(0, 0, 0, ${(0.55 * (camera.shadow / 100)).toFixed(3)})`;
-    ctx.shadowBlur = Math.round(32 * (camera.shadow / 100));
-    ctx.shadowOffsetY = Math.round(10 * (camera.shadow / 100));
-    ctx.fillStyle = "#000";
-    ctx.beginPath();
-    ctx.roundRect(rect.x, rect.y, rect.w, rect.h, r);
-    ctx.fill();
-    ctx.restore();
+    const cachedShadow = getCachedCameraShadow(rect.w, rect.h, r, camera.shadow);
+    if (cachedShadow) {
+      ctx.drawImage(
+        cachedShadow.canvas,
+        Math.round(rect.x) - cachedShadow.pad,
+        Math.round(rect.y) - cachedShadow.pad,
+      );
+    }
   }
 
   // Clipped webcam video
@@ -724,7 +871,7 @@ export async function extractWaveformFromUrl(url: string, bars = 96): Promise<nu
       let peak = 0;
       const start = i * blockSize;
       const end = Math.min(channel.length, start + blockSize);
-      for (let j = start; j < end; j += 4) {
+      for (let j = start; j < end; j += 16) {
         const v = Math.abs(channel[j]);
         if (v > peak) peak = v;
       }

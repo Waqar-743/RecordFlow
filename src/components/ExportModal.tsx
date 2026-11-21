@@ -32,14 +32,14 @@ const RESOLUTION_OPTIONS: { id: ExportResolution; title: string; subtitle: strin
 ];
 
 const FPS_OPTIONS: { id: ExportFps; title: string; subtitle: string }[] = [
-  { id: 60, title: "60 fps", subtitle: "Smoothest" },
-  { id: 30, title: "30 fps", subtitle: "Smaller" },
+  { id: 30, title: "30 fps", subtitle: "Fastest export" },
+  { id: 60, title: "60 fps", subtitle: "Smoothest motion" },
 ];
 
 const QUALITY_OPTIONS: { id: ExportQuality; title: string; subtitle: string }[] = [
-  { id: "best", title: "Best", subtitle: "Max clarity" },
-  { id: "high", title: "High", subtitle: "Balanced" },
-  { id: "small", title: "Small", subtitle: "Compact" },
+  { id: "high", title: "High", subtitle: "Fast & crisp" },
+  { id: "best", title: "Best", subtitle: "Max bitrate" },
+  { id: "small", title: "Small", subtitle: "Compact file" },
 ];
 
 function formatBytes(bytes: number): string {
@@ -51,7 +51,7 @@ export function ExportModal({ isOpen, project, onClose, onExportComplete }: Prop
   const [options, setOptions] = useState<ExportOptions>({
     format: "mp4",
     resolution: "1080p",
-    fps: 60,
+    fps: 30,
     quality: "high",
   });
 
@@ -138,6 +138,22 @@ export function ExportModal({ isOpen, project, onClose, onExportComplete }: Prop
     if (res.saved && res.filePath) {
       setSavedPath(res.filePath);
       onExportComplete?.(res.filePath);
+    }
+  };
+
+  const handleInstantSaveOriginal = async () => {
+    setError(null);
+    try {
+      const res = await fetch(project.screenUrl);
+      const blob = await res.blob();
+      const rawName = `${project.name.replace(/[^a-z0-9-_]+/gi, "_")}_original.mp4`;
+      const saved = await saveExportedVideoFile(blob, rawName, "mp4");
+      if (saved.saved && saved.filePath) {
+        setSavedPath(saved.filePath);
+        onExportComplete?.(saved.filePath);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -445,29 +461,45 @@ export function ExportModal({ isOpen, project, onClose, onExportComplete }: Prop
               </button>
             </>
           ) : (
-            <>
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={onClose}
-                className="rounded-xl px-4 py-2 text-xs font-medium"
+                onClick={() => void handleInstantSaveOriginal()}
+                title="Save the raw screen recording immediately without re-encoding canvas edits"
+                className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors"
                 style={{
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
                   color: "var(--text-2)",
                 }}
               >
-                Cancel
+                <DownloadIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
+                <span>Instant save original</span>
               </button>
-              <button
-                type="button"
-                onClick={() => void handleStartExport()}
-                className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-semibold shadow-md transition-all hover:brightness-105"
-                style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-              >
-                <DownloadIcon className="h-3.5 w-3.5" />
-                <span>Export {options.format.toUpperCase()}</span>
-              </button>
-            </>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl px-4 py-2 text-xs font-medium"
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleStartExport()}
+                  className="rf-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-semibold"
+                >
+                  <DownloadIcon className="h-3.5 w-3.5" />
+                  <span>Export {options.format.toUpperCase()}</span>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
