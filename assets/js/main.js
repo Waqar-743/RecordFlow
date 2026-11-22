@@ -740,19 +740,21 @@
       .then(function (rel) {
         if (!rel || !rel.tag_name) return;
         var tag = rel.tag_name;
+        var releaseUrl = rel.html_url || "https://github.com/Waqar-743/RecordFlow/releases/latest";
         $$("[data-latest-version]").forEach(function (el) { el.textContent = tag; });
+        $$("[data-dl-release], [data-dl-exe], [data-dl-msi]").forEach(function (a) {
+          a.href = releaseUrl;
+        });
         var exe = (rel.assets || []).find(function (a) { return /\.exe$/i.test(a.name); });
         var msi = (rel.assets || []).find(function (a) { return /\.msi$/i.test(a.name); });
         if (exe) {
           var exeMb = (exe.size / (1024 * 1024)).toFixed(2) + " MB";
-          $$("[data-dl-exe]").forEach(function (a) { a.href = exe.browser_download_url; });
           $$("[data-exe-name]").forEach(function (el) { el.textContent = exe.name; });
           $$("[data-exe-meta]").forEach(function (el) { el.textContent = exeMb + " · Windows x64 · Official GitHub Release"; });
           $$("[data-release-eyebrow]").forEach(function (el) { el.textContent = "Windows 10/11 · " + tag + " · " + exeMb + " Native App"; });
         }
         if (msi) {
           var msiMb = (msi.size / (1024 * 1024)).toFixed(2) + " MB";
-          $$("[data-dl-msi]").forEach(function (a) { a.href = msi.browser_download_url; });
           $$("[data-msi-name]").forEach(function (el) { el.textContent = msi.name; });
           $$("[data-msi-meta]").forEach(function (el) { el.textContent = msiMb + " · Windows x64 (en-US) · Official Release"; });
         }

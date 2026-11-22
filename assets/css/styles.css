@@ -2330,12 +2330,44 @@ kbd {
 }
 
 /* ============ CREATOR ECOSYSTEM & BACKLINKS ============ */
+.eco-shell {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  padding: clamp(24px, 3.6vw, 44px);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  overflow: hidden;
+}
+.eco-shell__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.eco-shell__head .section__title {
+  margin-bottom: 12px;
+}
+.eco-shell__cta {
+  flex-shrink: 0;
+}
+.eco-inline-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .eco-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 .eco-card {
+  min-width: 0;
+  height: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -2343,11 +2375,13 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: transform 0.25s var(--ease), border-color 0.25s;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s var(--ease), border-color 0.25s, box-shadow 0.25s;
 }
 .eco-card:hover {
   transform: translateY(-3px);
   border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
 }
 .eco-card__top {
   display: flex;
@@ -2355,42 +2389,88 @@ kbd {
   justify-content: space-between;
   gap: 8px;
 }
-.eco-card__title { font-size: 17px; }
-.eco-card__arrow { color: var(--accent); width: 16px; height: 16px; }
-.eco-card__desc { font-size: 13.5px; color: var(--text-2); }
+.eco-card__tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.eco-card__title {
+  font-size: 17.5px;
+  line-height: 1.2;
+}
+.eco-card__arrow {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.2s var(--ease);
+}
+.eco-card:hover .eco-card__arrow {
+  transform: translate(2px, -2px);
+}
+.eco-card__desc {
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
 .eco-card__url {
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Embed Backlink Badge Box */
 .embed-box {
-  margin-top: 24px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: clamp(20px, 2.6vw, 28px);
   display: grid;
-  grid-template-columns: 0.9fr 1.1fr;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: 24px;
   align-items: center;
 }
+.embed-box__copy {
+  min-width: 0;
+}
+.embed-box__title {
+  font-size: 19px;
+  margin-bottom: 6px;
+}
+.embed-box__desc {
+  font-size: 14px;
+  color: var(--text-2);
+}
 .embed-code-wrap {
+  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 .embed-code {
+  margin: 0;
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.5;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px;
+  padding: 12px 14px;
   color: var(--text-2);
   overflow-x: auto;
   white-space: pre;
@@ -2667,8 +2747,8 @@ kbd {
   .split-grid { grid-template-columns: 1fr; }
   .bento { grid-template-columns: repeat(2, 1fr); }
   .bento-card, .bento-card--wide { grid-column: span 1; }
-  .steps-grid, .stack-grid, .eco-grid { grid-template-columns: repeat(2, 1fr); }
-  .embed-box { grid-template-columns: 1fr; }
+  .steps-grid, .stack-grid, .eco-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .embed-box { grid-template-columns: minmax(0, 1fr); }
   .footer__grid { grid-template-columns: 1fr 1fr; }
 }
 
