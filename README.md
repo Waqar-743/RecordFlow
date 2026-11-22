@@ -56,8 +56,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 | Installer | File Name | Size | Best For |
 | :--- | :--- | :---: | :--- |
-| **EXE Setup (Recommended)** | [`RecordFlow_1.3.3_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.3_x64-setup.exe) | `2.97 MB` | Standard Windows 10/11 desktop installation |
-| **MSI Package** | [`RecordFlow_1.3.3_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest/download/RecordFlow_1.3.3_x64_en-US.msi) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
+| **EXE Setup (Recommended)** | [`RecordFlow_1.3.3_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
+| **MSI Package** | [`RecordFlow_1.3.3_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
 
 > **100% Offline & Private:** Rendered entirely on your computer. Zero bytes uploaded, zero watermarks, zero time limits.
 
