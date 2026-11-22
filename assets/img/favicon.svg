@@ -1,6 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="16" fill="#100c08"/>
-  <circle cx="32" cy="32" r="18" fill="none" stroke="#f5a524" stroke-width="1.5" opacity="0.55"/>
-  <circle cx="32" cy="32" r="9" fill="#f5a524"/>
-  <circle cx="32" cy="32" r="9" fill="none" stroke="#ffcc7a" stroke-width="1" opacity="0.7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07132c"/>
+      <stop offset="100%" stop-color="#0a2d73"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#48c6ff"/>
+      <stop offset="100%" stop-color="#1e7bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <path d="M16 42V22a5 5 0 0 1 5-5h22a5 5 0 0 1 5 5v3.5" fill="none" stroke="url(#accent)" stroke-width="3.2" stroke-linecap="round"/>
+  <polygon points="50,21.5 56,18 56,28 50,24.5" fill="#48c6ff"/>
+  <circle cx="44" cy="23" r="3.6" fill="#ff3b30"/>
+  <text x="19" y="45" font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="24" fill="#ffffff">R</text>
+  <text x="34" y="45" font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="24" fill="url(#accent)">F</text>
 </svg>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://waqar-743.github.io/RecordFlow/</loc>
+    <lastmod>2026-11-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://waqar-743.github.io/RecordFlow/assets/img/og-cover.png</image:loc>
+      <image:title>RecordFlow v1.3.3 — Free Windows Screen Recorder and Post-Recording Studio</image:title>
+      <image:caption>Privacy-first Windows screen recorder with invisible capture, 60 Hz auto-zoom, independent webcam overlay, and 4K 60fps local export.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://waqar-743.github.io/RecordFlow/assets/img/recordflow-icon.png</image:loc>
+      <image:title>RecordFlow App Icon</image:title>
+    </image:image>
+  </url>
+</urlset>

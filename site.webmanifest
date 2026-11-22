@@ -1,0 +1,23 @@
+{
+  "name": "RecordFlow — Windows Screen Recorder & Post-Recording Studio",
+  "short_name": "RecordFlow",
+  "description": "Free, open-source, privacy-first Windows screen recorder and post-recording studio with invisible capture, 60 Hz auto-zoom, independent webcam layer, and 4K 60fps local export.",
+  "start_url": "/RecordFlow/",
+  "scope": "/RecordFlow/",
+  "display": "standalone",
+  "background_color": "#f4efe6",
+  "theme_color": "#cf4a26",
+  "icons": [
+    {
+      "src": "assets/img/recordflow-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/img/apple-touch-icon.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ]
+}

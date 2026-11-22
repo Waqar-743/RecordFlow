@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://waqar-743.github.io/RecordFlow/sitemap.xml
+Host: https://waqar-743.github.io/RecordFlow/
