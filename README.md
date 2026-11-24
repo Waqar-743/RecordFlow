@@ -15,7 +15,7 @@
       <img alt="Official Website" src="https://img.shields.io/badge/Website-Live%20Interactive%20Demo-ff6b4a?style=for-the-badge&logo=googlechrome&logoColor=white" />
     </a>
     <a href="https://github.com/Waqar-743/RecordFlow/releases/latest">
-      <img alt="Download RecordFlow v1.3.3" src="https://img.shields.io/badge/Download-v1.3.3%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" />
+      <img alt="Download RecordFlow v1.3.4" src="https://img.shields.io/badge/Download-v1.3.4%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" />
     </a>
   </p>
 
@@ -56,8 +56,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 | Installer | File Name | Size | Best For |
 | :--- | :--- | :---: | :--- |
-| **EXE Setup (Recommended)** | [`RecordFlow_1.3.3_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
-| **MSI Package** | [`RecordFlow_1.3.3_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
+| **EXE Setup (Recommended)** | [`RecordFlow_1.3.4_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
+| **MSI Package** | [`RecordFlow_1.3.4_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
 
 > **100% Offline & Private:** Rendered entirely on your computer. Zero bytes uploaded, zero watermarks, zero time limits.
 
@@ -77,8 +77,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 - **Non-Destructive Webcam Overlay:** Snap to corners (`Top-Left`, `Top-Right`, `Bottom-Left`, `Bottom-Right`, `Center-Edge`) or drag freely on the canvas; adjust scale, shape (`Circle`, `Rounded`, `Square`), corner radius, horizontal mirror, border, shadow, or toggle visibility.
 - **Audio Mixer, Privacy Blur & Timeline:** Balance microphone, system audio, and master levels with fade-in/out; add draggable privacy blur masks; scrub and trim with Play/Pause (`Space`), waveform visualization, and zoom keyframe markers.
 
-### 3. Turbo Local Export Engine
-- Hardware-first linear decoding with offscreen backdrop/shadow caching and WebCodecs (`mp4-muxer` / `webm-muxer`).
+### 3. Frame-Accurate Local Export Engine
+- Hardware-accelerated WebCodecs `VideoDecoder` + ISO-BMFF MP4 demuxer with offscreen backdrop/shadow caching and quality-mode encoding (`mp4-muxer` / `webm-muxer`) for smooth, zero-drop animations.
 - **Formats:** `MP4` (H.264 + AAC) and `WebM`.
 - **Resolutions:** `4K (2160p)`, `1440p (QHD)`, `1080p (Full HD)`, `720p`.
 - **Frame Rates & Quality:** `60 fps` or `30 fps` with `Best`, `High`, and `Small` quality profiles.
@@ -92,7 +92,7 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 ## Why RecordFlow?
 
-| Capability | RecordFlow v1.3.3 | Cloud Recorders (Loom, etc.) | Heavy Suites (OBS / Camtasia) |
+| Capability | RecordFlow v1.3.4 | Cloud Recorders (Loom, etc.) | Heavy Suites (OBS / Camtasia) |
 | :--- | :---: | :---: | :---: |
 | **Price** | **Free & Open Source** | Monthly subscription | Free (OBS) / Paid (Camtasia) |
 | **Installer Size** | **2.97 MB** | 120–250 MB | 150–600 MB+ |
