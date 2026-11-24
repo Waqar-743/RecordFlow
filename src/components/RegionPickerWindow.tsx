@@ -3,12 +3,14 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CaptureRegion } from "../types";
+import { computeRegionToolbarPlacement } from "../utils/regionToolbarLayout";
 import { CheckIcon, RecordDotIcon, RotateCcwIcon } from "./Icons";
 
 type SelectionRect = {
@@ -62,6 +64,12 @@ export function RegionPickerWindow() {
   const [selection, setSelection] = useState<SelectionRect | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewport, setViewport] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  const [toolbarSize, setToolbarSize] = useState({ width: 520, height: 50 });
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     mode: DragMode;
     startX: number;
@@ -71,15 +79,20 @@ export function RegionPickerWindow() {
 
   useEffect(() => {
     document.documentElement.classList.add("rf-picker-mode");
+    const onResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener("resize", onResize);
     return () => {
       document.documentElement.classList.remove("rf-picker-mode");
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 
   const toAlignedRegion = useCallback(
     (rect: SelectionRect): CaptureRegion => {
-      const scaleX = displayWidth / Math.max(window.innerWidth, 1);
-      const scaleY = displayHeight / Math.max(window.innerHeight, 1);
+      const scaleX = displayWidth / Math.max(viewport.width, 1);
+      const scaleY = displayHeight / Math.max(viewport.height, 1);
       const x = Math.max(0, Math.round(rect.x * scaleX));
       const y = Math.max(0, Math.round(rect.y * scaleY));
       return {
@@ -89,7 +102,7 @@ export function RegionPickerWindow() {
         height: alignedWithinBounds(Math.round(rect.height * scaleY), displayHeight - y),
       };
     },
-    [displayHeight, displayWidth],
+    [displayHeight, displayWidth, viewport.height, viewport.width],
   );
 
   const cancel = useCallback(async () => {
@@ -145,8 +158,8 @@ export function RegionPickerWindow() {
     const drag = dragRef.current;
     if (!drag) return;
 
-    const cx = clamp(event.clientX, 0, window.innerWidth);
-    const cy = clamp(event.clientY, 0, window.innerHeight);
+    const cx = clamp(event.clientX, 0, viewport.width);
+    const cy = clamp(event.clientY, 0, viewport.height);
 
     if (drag.mode === "new") {
       setSelection({
@@ -164,8 +177,8 @@ export function RegionPickerWindow() {
     if (drag.mode === "move") {
       setSelection({
         ...orig,
-        x: clamp(orig.x + (cx - drag.startX), 0, Math.max(0, window.innerWidth - orig.width)),
-        y: clamp(orig.y + (cy - drag.startY), 0, Math.max(0, window.innerHeight - orig.height)),
+        x: clamp(orig.x + (cx - drag.startX), 0, Math.max(0, viewport.width - orig.width)),
+        y: clamp(orig.y + (cy - drag.startY), 0, Math.max(0, viewport.height - orig.height)),
       });
       return;
     }
@@ -208,7 +221,40 @@ export function RegionPickerWindow() {
     selection.width >= MIN_SELECTION_SIZE &&
     selection.height >= MIN_SELECTION_SIZE;
 
-  const toolbarBelow = selection ? selection.y + selection.height < window.innerHeight - 76 : true;
+  const showToolbar = !isDragging && canConfirm && alignedPreview !== null;
+
+  // Measure actual toolbar dimensions so placement stays exact across DPI scales & wrapping
+  useLayoutEffect(() => {
+    if (!showToolbar || !toolbarRef.current) return;
+    const el = toolbarRef.current;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setToolbarSize((prev) =>
+          Math.abs(prev.width - rect.width) > 1 || Math.abs(prev.height - rect.height) > 1
+            ? { width: rect.width, height: rect.height }
+            : prev,
+        );
+      }
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [showToolbar, alignedPreview?.width, alignedPreview?.height]);
+
+  const toolbarPlacement =
+    showToolbar && selection
+      ? computeRegionToolbarPlacement(
+          selection,
+          viewport.width,
+          viewport.height,
+          toolbarSize.width,
+          toolbarSize.height,
+        )
+      : null;
 
   return (
     <div
@@ -219,36 +265,38 @@ export function RegionPickerWindow() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {/* Top guidance bar */}
-      <div
-        className="fixed left-1/2 top-6 z-10 -translate-x-1/2 flex items-center gap-3 rounded-full px-5 py-2.5 text-xs font-medium shadow-2xl"
-        style={{
-          background: "rgba(22, 16, 16, 0.95)",
-          border: "1px solid rgba(255, 235, 225, 0.18)",
-          color: "#f7f1ee",
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ background: "var(--accent)" }}
-        />
-        <span>
-          {canConfirm
-            ? "Drag corners to fine-tune area, then click Record this area"
-            : "Click and drag anywhere on screen to select the recording area"}
-        </span>
-        <span className="opacity-40">·</span>
-        <span className="font-mono text-[11px] opacity-80">Esc to cancel</span>
-        <button
-          type="button"
-          onClick={() => void cancel()}
-          className="ml-1 rounded-full px-3 py-1 text-[11px] font-semibold"
-          style={{ background: "rgba(255,235,225,0.14)", color: "#ffffff" }}
+      {/* Top guidance bar — hidden once selection toolbar is active so nothing ever overlaps Start recording */}
+      {!showToolbar && (
+        <div
+          className={`fixed left-1/2 top-5 z-20 -translate-x-1/2 flex items-center gap-3 rounded-full px-5 py-2.5 text-xs font-medium shadow-2xl transition-opacity ${
+            isDragging ? "pointer-events-none opacity-65" : ""
+          }`}
+          style={{
+            background: "rgba(22, 16, 16, 0.95)",
+            border: "1px solid rgba(255, 235, 225, 0.18)",
+            color: "#f7f1ee",
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          Cancel
-        </button>
-      </div>
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: "var(--accent)" }}
+          />
+          <span>Click and drag anywhere on screen to select the recording area</span>
+          <span className="opacity-40">·</span>
+          <span className="font-mono text-[11px] opacity-80">Esc to cancel</span>
+          {!isDragging && (
+            <button
+              type="button"
+              onClick={() => void cancel()}
+              className="ml-1 rounded-full px-3 py-1 text-[11px] font-semibold"
+              style={{ background: "rgba(255,235,225,0.14)", color: "#ffffff" }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Center prompt when user hasn't dragged an area yet */}
       {!selection && !error && (
@@ -262,14 +310,14 @@ export function RegionPickerWindow() {
         >
           <div className="text-sm font-semibold">Click &amp; drag to draw capture area</div>
           <div className="text-xs" style={{ color: "#c9b5b2" }}>
-            Release to record the selected region or adjust its handles
+            Release to start recording or fine-tune the edges
           </div>
         </div>
       )}
 
       {error && (
         <div
-          className="fixed left-1/2 top-20 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-medium shadow-xl"
+          className="fixed left-1/2 top-20 z-20 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-medium shadow-xl"
           style={{ background: "rgba(220, 38, 38, 0.94)", color: "#ffffff" }}
         >
           {error}
@@ -289,14 +337,14 @@ export function RegionPickerWindow() {
         >
           <div className="rf-region-picker-grid" />
 
-          {/* Live dimension badge while dragging */}
-          {alignedPreview && (
+          {/* Live dimension badge while dragging (hidden once toolbar displays dimensions) */}
+          {alignedPreview && isDragging && (
             <div
               className="pointer-events-none absolute left-2 top-2 rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold shadow"
               style={{
-                background: "rgba(20, 14, 14, 0.9)",
+                background: "rgba(20, 14, 14, 0.92)",
                 color: "var(--accent)",
-                border: "1px solid rgba(255, 107, 74, 0.4)",
+                border: "1px solid rgba(255, 107, 74, 0.45)",
               }}
             >
               {alignedPreview.width} × {alignedPreview.height}
@@ -311,78 +359,83 @@ export function RegionPickerWindow() {
               onPointerDown={(e) => startDrag(e, h.id)}
             />
           ))}
+        </div>
+      )}
 
-          {!isDragging && canConfirm && alignedPreview && (
-            <div
-              className="rf-region-toolbar"
-              style={toolbarBelow ? { top: "calc(100% + 12px)" } : { bottom: "calc(100% + 12px)" }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <span
-                className="inline-flex h-9 items-center rounded-xl px-3 font-mono text-xs font-semibold shadow-lg"
-                style={{
-                  background: "rgba(20, 15, 15, 0.95)",
-                  border: "1px solid rgba(255, 235, 225, 0.16)",
-                  color: "var(--accent)",
-                }}
-              >
-                {alignedPreview.width} × {alignedPreview.height}
-              </span>
+      {/* Smart viewport-clamped floating toolbar — always stays visible and unobstructed */}
+      {showToolbar && alignedPreview && toolbarPlacement && (
+        <div
+          ref={toolbarRef}
+          className="rf-region-toolbar"
+          style={{
+            left: toolbarPlacement.left,
+            top: toolbarPlacement.top,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span
+            className="inline-flex h-9 items-center rounded-xl px-3 font-mono text-xs font-semibold"
+            style={{
+              background: "rgba(255, 235, 225, 0.08)",
+              border: "1px solid rgba(255, 235, 225, 0.14)",
+              color: "var(--accent)",
+            }}
+          >
+            {alignedPreview.width} × {alignedPreview.height}
+          </span>
 
-              <button
-                type="button"
-                onClick={() => void confirm(true)}
-                className="rf-btn-primary inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg"
-              >
-                <RecordDotIcon className="h-3.5 w-3.5" />
-                <span>Record this area (Enter)</span>
-              </button>
+          <button
+            type="button"
+            onClick={() => void confirm(true)}
+            className="rf-btn-primary inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg"
+          >
+            <RecordDotIcon className="h-3.5 w-3.5" />
+            <span>Start recording (Enter)</span>
+          </button>
 
-              <button
-                type="button"
-                onClick={() => void confirm(false)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-lg"
-                style={{
-                  background: "rgba(24, 18, 18, 0.95)",
-                  border: "1px solid rgba(255, 235, 225, 0.22)",
-                  color: "#f7f1ee",
-                }}
-              >
-                <CheckIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
-                <span>Apply area</span>
-              </button>
+          <button
+            type="button"
+            onClick={() => void confirm(false)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold"
+            style={{
+              background: "rgba(255, 235, 225, 0.1)",
+              border: "1px solid rgba(255, 235, 225, 0.18)",
+              color: "#f7f1ee",
+            }}
+          >
+            <CheckIcon className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
+            <span>Apply area</span>
+          </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setSelection(null);
-                  setError(null);
-                }}
-                className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-xs font-medium shadow-lg"
-                style={{
-                  background: "rgba(20, 15, 15, 0.92)",
-                  border: "1px solid rgba(255, 235, 225, 0.16)",
-                  color: "#d4c3c0",
-                }}
-              >
-                <RotateCcwIcon className="h-3 w-3" />
-                <span>Redraw</span>
-              </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelection(null);
+              setError(null);
+            }}
+            className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-xs font-medium"
+            style={{
+              background: "rgba(255, 235, 225, 0.06)",
+              border: "1px solid rgba(255, 235, 225, 0.14)",
+              color: "#d4c3c0",
+            }}
+          >
+            <RotateCcwIcon className="h-3 w-3" />
+            <span>Redraw</span>
+          </button>
 
-              <button
-                type="button"
-                onClick={() => void cancel()}
-                className="h-9 rounded-xl px-3 text-xs font-medium shadow-lg"
-                style={{
-                  background: "rgba(20, 15, 15, 0.92)",
-                  border: "1px solid rgba(255, 235, 225, 0.16)",
-                  color: "#f0e6e4",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => void cancel()}
+            className="h-9 rounded-xl px-3 text-xs font-medium"
+            style={{
+              background: "rgba(255, 235, 225, 0.06)",
+              border: "1px solid rgba(255, 235, 225, 0.14)",
+              color: "#f0e6e4",
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
     </div>

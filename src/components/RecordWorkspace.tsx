@@ -934,38 +934,45 @@ export function RecordWorkspace({
                       style={{ background: "rgba(12, 8, 8, 0.56)" }}
                     />
                     <div
-                      className="absolute rounded-sm"
+                      className="pointer-events-none absolute rounded-sm"
                       style={{
                         ...areaCropStyle,
                         border: "2px solid var(--accent)",
                         boxShadow: "0 0 0 1px rgba(255,240,230,0.25) inset",
                         background: "var(--accent-soft)",
                       }}
-                    >
-                      {settings.capture_region && !stageDragRect && (
-                        <div
-                          className="absolute left-1.5 top-1.5 flex flex-wrap items-center gap-1.5"
-                          onPointerDown={(e) => e.stopPropagation()}
+                    />
+                    {settings.capture_region && !stageDragRect && (
+                      <div
+                        className={`absolute bottom-2.5 z-20 flex flex-wrap items-center gap-1.5 rounded-xl px-2 py-1 shadow-xl backdrop-blur-md ${
+                          settings.camera_enabled
+                            ? "left-2.5 max-w-[calc(100%-5.5rem)]"
+                            : "left-1/2 -translate-x-1/2 max-w-[calc(100%-1.5rem)]"
+                        }`}
+                        style={{
+                          background: "rgba(18, 12, 12, 0.9)",
+                          border: "1px solid rgba(255, 235, 225, 0.2)",
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold"
+                          style={{ background: "var(--surface)", color: "var(--accent)", border: "1px solid var(--accent)" }}
                         >
-                          <span
-                            className="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold shadow"
-                            style={{ background: "var(--surface)", color: "var(--accent)", border: "1px solid var(--accent)" }}
+                          {settings.capture_region.width}×{settings.capture_region.height}
+                        </span>
+                        {!isRecording && (
+                          <button
+                            type="button"
+                            onClick={onQuickStart}
+                            className="rf-btn-primary inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold shadow"
                           >
-                            {settings.capture_region.width}×{settings.capture_region.height}
-                          </span>
-                          {!isRecording && (
-                            <button
-                              type="button"
-                              onClick={onQuickStart}
-                              className="rf-btn-primary inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold shadow"
-                            >
-                              <RecordDotIcon className="h-2.5 w-2.5" />
-                              <span>Record area</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                            <RecordDotIcon className="h-2.5 w-2.5" />
+                            <span>Start recording</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 

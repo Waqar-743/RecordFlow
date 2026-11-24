@@ -227,12 +227,18 @@ textarea:focus-visible {
 }
 
 .rf-region-toolbar {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  white-space: nowrap;
-  z-index: 5;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border-radius: 16px;
+  background: rgba(16, 11, 11, 0.92);
+  border: 1px solid rgba(255, 235, 225, 0.18);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+  z-index: 30;
 }
