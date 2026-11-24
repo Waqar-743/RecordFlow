@@ -4,7 +4,9 @@ import {
   getAspectDimensions,
   renderCompositionFrame,
   type RenderSources,
+  type VideoDrawableSource,
 } from "./canvasRenderer";
+import { parseMp4VideoTrack, type Mp4VideoTrackInfo } from "./mp4Demuxer";
 import type {
   EditorProject,
   ExportOptions,
@@ -51,13 +53,29 @@ export function getExportOutputSpecs(project: EditorProject, options: ExportOpti
   return { width, height, bitrateBps, trimmedDuration, estimatedBytes };
 }
 
-function loadVideoElement(url: string): Promise<HTMLVideoElement> {
+/**
+ * Mount a tiny nearly-invisible container in the live DOM so Chromium/WebView2 never
+ * throttles or skips video frame texture uploads for offscreen `<video>` elements.
+ */
+function createHiddenVideoHost(): HTMLDivElement | null {
+  if (typeof document === "undefined" || !document.body) return null;
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText =
+    "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.001;pointer-events:none;overflow:hidden;z-index:-1;";
+  document.body.appendChild(host);
+  return host;
+}
+
+function loadVideoElement(url: string, host: HTMLElement | null): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const v = document.createElement("video");
     v.crossOrigin = "anonymous";
     v.muted = true;
     v.playsInline = true;
     v.preload = "auto";
+    v.style.cssText = "width:2px;height:2px;display:block;";
+    if (host) host.appendChild(v);
     v.onloadeddata = () => resolve(v);
     v.onerror = () => reject(new Error("Could not load video track for export."));
     v.src = url;
@@ -75,113 +93,366 @@ function loadImageElement(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function seekVideo(video: HTMLVideoElement, timeSec: number, tolerance = 0.016): Promise<void> {
+function seekVideoExact(video: HTMLVideoElement, timeSec: number, tolerance = 0.002): Promise<void> {
   return new Promise((resolve) => {
-    const maxDur = Number.isFinite(video.duration) ? video.duration : timeSec;
+    const maxDur = Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.001) : timeSec;
     const clamped = Math.max(0, Math.min(maxDur, timeSec));
+    if (!video.paused) {
+      video.pause();
+    }
     if (Math.abs(video.currentTime - clamped) <= tolerance && video.readyState >= 2) {
       resolve();
       return;
     }
     let settled = false;
-    const done = () => {
+    const finish = () => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      video.removeEventListener("seeked", done);
+      video.removeEventListener("seeked", onSeeked);
       resolve();
     };
-    const timer = window.setTimeout(done, 450);
-    video.addEventListener("seeked", done, { once: true });
+    const onSeeked = () => {
+      // Wait one animation frame when visible so Chromium finishes uploading the sought frame texture
+      if (typeof window.requestAnimationFrame === "function" && !document.hidden) {
+        window.requestAnimationFrame(() => finish());
+      } else {
+        finish();
+      }
+    };
+    const timer = window.setTimeout(finish, 900);
+    video.addEventListener("seeked", onSeeked, { once: true });
     video.currentTime = clamped;
   });
 }
 
-function setSafePlaybackRate(video: HTMLVideoElement, desiredRate: number) {
-  for (const rate of [desiredRate, 3.0, 2.0, 1.5, 1.0]) {
-    try {
-      video.playbackRate = rate;
-      return;
-    } catch {
-      /* try lower rate */
+interface FrameSource {
+  getFrameAtTime(timeSec: number): Promise<VideoDrawableSource | null>;
+  dispose(): void;
+}
+
+/**
+ * Hardware-accelerated WebCodecs `VideoDecoder` frame stream backed by our MP4 demuxer.
+ * Decodes every compressed sample sequentially in exact presentation order with zero
+ * `HTMLVideoElement` compositor throttling, zero playback-rate frame dropping, and
+ * frame-accurate synchronization for smooth UI animations and cursor/zoom motion.
+ */
+class Mp4VideoFrameStream implements FrameSource {
+  private readonly buffer: Uint8Array;
+  private readonly track: Mp4VideoTrackInfo;
+  private readonly decoder: VideoDecoder;
+  private nextSampleIdx: number;
+  private currentFrame: VideoFrame | null = null;
+  private decodedQueue: VideoFrame[] = [];
+  private outputWaiters: Array<() => void> = [];
+  private error: Error | null = null;
+  private flushing = false;
+  private eofFlushed = false;
+  private disposed = false;
+
+  private constructor(
+    buffer: ArrayBuffer,
+    track: Mp4VideoTrackInfo,
+    config: VideoDecoderConfig,
+    startSampleIdx: number,
+  ) {
+    this.buffer = new Uint8Array(buffer);
+    this.track = track;
+    this.nextSampleIdx = startSampleIdx;
+
+    this.decoder = new VideoDecoder({
+      output: (frame) => {
+        if (this.disposed) {
+          frame.close();
+          return;
+        }
+        // Insert sorted by presentation timestamp in case of out-of-order delivery
+        const ts = frame.timestamp;
+        if (
+          this.decodedQueue.length === 0 ||
+          this.decodedQueue[this.decodedQueue.length - 1].timestamp <= ts
+        ) {
+          this.decodedQueue.push(frame);
+        } else {
+          let idx = this.decodedQueue.length - 1;
+          while (idx > 0 && this.decodedQueue[idx - 1].timestamp > ts) idx--;
+          this.decodedQueue.splice(idx, 0, frame);
+        }
+        this.notifyOutput();
+      },
+      error: (err) => {
+        this.error = err instanceof Error ? err : new Error(String(err));
+        this.notifyOutput();
+      },
+    });
+
+    this.decoder.configure(config);
+  }
+
+  static async create(
+    arrayBuffer: ArrayBuffer,
+    trimStartSec: number,
+  ): Promise<Mp4VideoFrameStream | null> {
+    if (typeof VideoDecoder === "undefined" || typeof EncodedVideoChunk === "undefined") {
+      return null;
     }
+
+    const track = parseMp4VideoTrack(arrayBuffer);
+    if (!track || track.samples.length === 0) return null;
+
+    const baseConfig: VideoDecoderConfig = {
+      codec: track.codec,
+      codedWidth: track.codedWidth,
+      codedHeight: track.codedHeight,
+      description: track.description,
+      optimizeForLatency: false,
+    };
+
+    let selectedConfig: VideoDecoderConfig | null = null;
+    for (const hw of ["prefer-hardware", "no-preference"] as const) {
+      try {
+        const cfg: VideoDecoderConfig = { ...baseConfig, hardwareAcceleration: hw };
+        const sup = await VideoDecoder.isConfigSupported(cfg);
+        if (sup.supported) {
+          selectedConfig = sup.config ?? cfg;
+          break;
+        }
+      } catch {
+        /* try next hardware preference */
+      }
+    }
+    if (!selectedConfig) return null;
+
+    // Jump straight to the nearest keyframe at or before trimStartSec
+    const startUs = Math.max(0, Math.round(trimStartSec * 1_000_000));
+    let startSampleIdx = 0;
+    for (let i = 0; i < track.samples.length; i++) {
+      const s = track.samples[i];
+      if (s.isKey) {
+        if (s.ptsUs <= startUs + 50_000) {
+          startSampleIdx = i;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const stream = new Mp4VideoFrameStream(arrayBuffer, track, selectedConfig, startSampleIdx);
+    // Warm up and verify the first frame decodes cleanly before committing to WebCodecs decode
+    try {
+      const first = await stream.getFrameAtTime(trimStartSec);
+      if (!first) {
+        stream.dispose();
+        return null;
+      }
+      return stream;
+    } catch {
+      stream.dispose();
+      return null;
+    }
+  }
+
+  private notifyOutput() {
+    if (this.outputWaiters.length === 0) return;
+    const waiters = this.outputWaiters;
+    this.outputWaiters = [];
+    for (const wake of waiters) wake();
+  }
+
+  private waitForOutput(timeoutMs = 5000): Promise<void> {
+    if (this.error || this.disposed) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const wake = () => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const timer = window.setTimeout(() => {
+        if (done) return;
+        done = true;
+        const i = this.outputWaiters.indexOf(wake);
+        if (i >= 0) this.outputWaiters.splice(i, 1);
+        reject(new Error("VideoDecoder timed out waiting for decoded frame."));
+      }, timeoutMs);
+      this.outputWaiters.push(wake);
+    });
+  }
+
+  private feedNextSample() {
+    if (this.nextSampleIdx >= this.track.samples.length) return;
+    const sample = this.track.samples[this.nextSampleIdx++];
+    const chunkData = this.buffer.subarray(sample.offset, sample.offset + sample.size);
+    const chunk = new EncodedVideoChunk({
+      type: sample.isKey ? "key" : "delta",
+      timestamp: sample.ptsUs,
+      duration: sample.durationUs,
+      data: chunkData,
+    });
+    this.decoder.decode(chunk);
+  }
+
+  private advanceCurrentTo(targetUs: number) {
+    // 1.5ms epsilon absorbs rounding between 1/fps and MP4 timescale ticks
+    const eps = 1500;
+    while (this.decodedQueue.length > 0 && this.decodedQueue[0].timestamp <= targetUs + eps) {
+      const next = this.decodedQueue.shift()!;
+      this.currentFrame?.close();
+      this.currentFrame = next;
+    }
+  }
+
+  private hasFrameAfter(targetUs: number): boolean {
+    const eps = 1500;
+    return this.decodedQueue.length > 0 && this.decodedQueue[0].timestamp > targetUs + eps;
+  }
+
+  async getFrameAtTime(timeSec: number): Promise<VideoFrame | null> {
+    if (this.disposed) return null;
+    if (this.error) throw this.error;
+
+    const targetUs = Math.max(0, Math.round(timeSec * 1_000_000));
+    this.advanceCurrentTo(targetUs);
+
+    while (!this.eofFlushed && !this.hasFrameAfter(targetUs)) {
+      if (this.error) throw this.error;
+
+      if (this.nextSampleIdx < this.track.samples.length) {
+        // Feed compressed samples while keeping decoder queue bounded
+        let fed = 0;
+        while (
+          this.nextSampleIdx < this.track.samples.length &&
+          this.decoder.decodeQueueSize < 8 &&
+          this.decodedQueue.length < 10 &&
+          fed < 8
+        ) {
+          this.feedNextSample();
+          fed++;
+        }
+        // Yield briefly if we hit EOF so we flush all remaining buffered/B-frames
+        if (this.nextSampleIdx >= this.track.samples.length && !this.flushing) {
+          this.flushing = true;
+          await this.decoder.flush();
+          this.eofFlushed = true;
+          this.advanceCurrentTo(targetUs);
+          break;
+        }
+      } else if (!this.flushing) {
+        this.flushing = true;
+        await this.decoder.flush();
+        this.eofFlushed = true;
+        this.advanceCurrentTo(targetUs);
+        break;
+      }
+
+      this.advanceCurrentTo(targetUs);
+      if (!this.eofFlushed && !this.hasFrameAfter(targetUs)) {
+        await this.waitForOutput();
+        this.advanceCurrentTo(targetUs);
+      }
+    }
+
+    if (this.error) throw this.error;
+    return this.currentFrame ?? this.decodedQueue[0] ?? null;
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.notifyOutput();
+    try {
+      if (this.decoder.state !== "closed") {
+        this.decoder.close();
+      }
+    } catch {
+      /* ignore */
+    }
+    this.currentFrame?.close();
+    this.currentFrame = null;
+    for (const f of this.decodedQueue) {
+      try {
+        f.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.decodedQueue = [];
   }
 }
 
 /**
- * Wait until `screenVideo.currentTime` reaches `targetTime` via linear hardware playback.
- * Linear forward decoding avoids flushing the H.264 GOP buffer on every frame (15x-25x faster
- * than per-frame random `currentTime` seeking). Falls back to `seekVideo` if playback stalls.
+ * Deterministic paused `<video>` frame source fallback (for WebM or non-WebCodecs inputs).
+ * Keeps the video element attached in a hidden DOM container and strictly paused so every
+ * frame seek produces the exact decoded GPU texture with zero skipped animations.
  */
-async function advanceVideosToTime(
-  screenVideo: HTMLVideoElement,
-  cameraVideo: HTMLVideoElement | null,
-  targetTime: number,
-  playbackRate: number,
-): Promise<void> {
-  const maxDur = Number.isFinite(screenVideo.duration) ? screenVideo.duration : targetTime;
-  const clampedTarget = Math.max(0, Math.min(maxDur, targetTime));
+class PausedVideoFrameStream implements FrameSource {
+  private readonly video: HTMLVideoElement;
+  private readonly host: HTMLDivElement | null;
 
-  // If already at or slightly past targetTime within 1 frame, use the current decoded frame immediately!
-  const diff = clampedTarget - screenVideo.currentTime;
-  if (diff <= 0.008 && diff >= -0.08 && screenVideo.readyState >= 2) {
-    return;
+  private constructor(video: HTMLVideoElement, host: HTMLDivElement | null) {
+    this.video = video;
+    this.host = host;
   }
 
-  // If we somehow jumped backward or more than 0.6s ahead, perform a parallel seek
-  if (diff < -0.08 || diff > 0.6 || screenVideo.ended) {
-    await Promise.all([
-      seekVideo(screenVideo, clampedTarget),
-      cameraVideo ? seekVideo(cameraVideo, clampedTarget) : Promise.resolve(),
-    ]);
-    return;
-  }
-
-  // Ensure linear forward playback is running
-  if (screenVideo.paused && !screenVideo.ended) {
-    setSafePlaybackRate(screenVideo, playbackRate);
-    void screenVideo.play().catch(() => {});
-    if (cameraVideo && cameraVideo.paused && !cameraVideo.ended) {
-      setSafePlaybackRate(cameraVideo, playbackRate);
-      void cameraVideo.play().catch(() => {});
+  static async create(url: string): Promise<PausedVideoFrameStream> {
+    const host = createHiddenVideoHost();
+    try {
+      const video = await loadVideoElement(url, host);
+      video.pause();
+      return new PausedVideoFrameStream(video, host);
+    } catch (err) {
+      host?.remove();
+      throw err;
     }
   }
 
-  // Keep camera video within 65ms of screen video during linear playback
-  if (
-    cameraVideo &&
-    !cameraVideo.paused &&
-    Math.abs(cameraVideo.currentTime - screenVideo.currentTime) > 0.065
-  ) {
-    cameraVideo.currentTime = screenVideo.currentTime;
+  async getFrameAtTime(timeSec: number): Promise<HTMLVideoElement> {
+    await seekVideoExact(this.video, timeSec);
+    return this.video;
   }
 
-  // Wait linearly until screenVideo.currentTime reaches clampedTarget (with 140ms stall fallback)
-  const startWait = performance.now();
-  const initialPos = screenVideo.currentTime;
+  dispose() {
+    this.video.pause();
+    this.video.removeAttribute("src");
+    this.video.load();
+    this.host?.remove();
+  }
+}
 
-  while (screenVideo.currentTime < clampedTarget - 0.006 && !screenVideo.ended) {
-    const waitedMs = performance.now() - startWait;
-    if (waitedMs > 140) {
-      // If playback stalled (e.g. tab backgrounded or codec stall), fall back to parallel seek
-      if (Math.abs(screenVideo.currentTime - initialPos) < 0.002) {
-        screenVideo.pause();
-        cameraVideo?.pause();
-        await Promise.all([
-          seekVideo(screenVideo, clampedTarget),
-          cameraVideo ? seekVideo(cameraVideo, clampedTarget) : Promise.resolve(),
-        ]);
+async function createFrameSource(
+  url: string,
+  trimStartSec: number,
+  preloadedBuffer?: ArrayBuffer | null,
+): Promise<{ source: FrameSource; buffer: ArrayBuffer | null }> {
+  let buffer: ArrayBuffer | null = preloadedBuffer ?? null;
+  if (!buffer) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        buffer = await res.arrayBuffer();
       }
-      break;
+    } catch {
+      buffer = null;
     }
-    await new Promise((r) => window.setTimeout(r, 3));
   }
+
+  if (buffer) {
+    const webCodecsStream = await Mp4VideoFrameStream.create(buffer, trimStartSec);
+    if (webCodecsStream) {
+      return { source: webCodecsStream, buffer };
+    }
+  }
+
+  const pausedStream = await PausedVideoFrameStream.create(url);
+  return { source: pausedStream, buffer };
 }
 
 async function decodeTrimmedAudioBuffer(
   project: EditorProject,
   startSec: number,
   durationSec: number,
+  preloadedBuffer?: ArrayBuffer | null,
 ): Promise<AudioBuffer | null> {
   if (project.audio.masterVolume <= 0.001 || (project.audio.micMuted && project.audio.systemMuted)) {
     return null;
@@ -191,8 +462,8 @@ async function decodeTrimmedAudioBuffer(
       window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return null;
-    const res = await fetch(project.screenUrl);
-    const arrayBuf = await res.arrayBuffer();
+    const arrayBuf =
+      preloadedBuffer ?? (await (await fetch(project.screenUrl)).arrayBuffer());
     const ctx = new AudioCtx();
     const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
     const sampleRate = decoded.sampleRate;
@@ -237,42 +508,57 @@ async function decodeTrimmedAudioBuffer(
   }
 }
 
-async function pickWebCodecsVideoCodec(
+async function pickWebCodecsVideoConfig(
   format: "mp4" | "webm",
   width: number,
   height: number,
   fps: number,
   bitrate: number,
-): Promise<string | null> {
+): Promise<VideoEncoderConfig | null> {
   if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") return null;
   const candidates =
     format === "mp4"
       ? ["avc1.640033", "avc1.64002a", "avc1.4d002a", "avc1.42001f"]
       : ["vp09.00.41.08", "vp8"];
 
-  for (const codec of candidates) {
-    try {
-      const support = await VideoEncoder.isConfigSupported({
-        codec,
-        width,
-        height,
-        bitrate,
-        framerate: fps,
-        hardwareAcceleration: "prefer-hardware",
-        latencyMode: "realtime",
-      });
-      if (support.supported) return codec;
-    } catch {
-      /* try next */
+  // Prefer quality latencyMode so offline exports never drop motion frames or degrade transitions
+  const modes: Array<{
+    hardwareAcceleration: HardwareAcceleration;
+    latencyMode: LatencyMode;
+  }> = [
+    { hardwareAcceleration: "prefer-hardware", latencyMode: "quality" },
+    { hardwareAcceleration: "no-preference", latencyMode: "quality" },
+    { hardwareAcceleration: "prefer-hardware", latencyMode: "realtime" },
+    { hardwareAcceleration: "no-preference", latencyMode: "realtime" },
+  ];
+
+  for (const mode of modes) {
+    for (const codec of candidates) {
+      try {
+        const cfg: VideoEncoderConfig = {
+          codec,
+          width,
+          height,
+          bitrate,
+          framerate: fps,
+          hardwareAcceleration: mode.hardwareAcceleration,
+          latencyMode: mode.latencyMode,
+        };
+        const support = await VideoEncoder.isConfigSupported(cfg);
+        if (support.supported) return cfg;
+      } catch {
+        /* try next */
+      }
     }
   }
   return null;
 }
 
 /**
- * High-speed hardware-accelerated local video export engine.
- * Uses linear hardware decoding, cached backdrop/shadow layers, parallel audio decoding,
- * and low-latency hardware WebCodecs encoding to render exports 10x–25x faster.
+ * Frame-accurate, hardware-accelerated local video export engine.
+ * Uses direct WebCodecs `VideoDecoder` MP4 demuxing (with exact paused-seek fallback),
+ * cached backdrop/shadow layers, and quality-mode WebCodecs encoding so every single
+ * screen animation, scroll, hover transition, cursor motion, and zoom keyframe renders smoothly.
  */
 export async function exportProjectLocally(
   project: EditorProject,
@@ -290,29 +576,34 @@ export async function exportProjectLocally(
     currentFrame: 0,
     totalFrames,
     etaSeconds: null,
-    message: "Loading tracks & initializing hardware encoder…",
+    message: "Loading tracks & initializing frame-accurate encoder…",
   });
 
-  // Start audio decoding and media element loading concurrently
-  const audioBufferPromise = decodeTrimmedAudioBuffer(project, project.trimStart, trimmedDuration);
-  const [screenVideo, cameraVideo, customBgImage] = await Promise.all([
-    loadVideoElement(project.screenUrl),
-    project.camera.enabled && project.cameraUrl
-      ? loadVideoElement(project.cameraUrl).catch(() => null)
-      : Promise.resolve(null),
-    project.canvas.customBackgroundUrl
-      ? loadImageElement(project.canvas.customBackgroundUrl)
-      : Promise.resolve(null),
-  ]);
+  // Fetch screen video bytes once so both MP4 WebCodecs decoder and WebAudio decoder reuse them
+  let screenArrayBuffer: ArrayBuffer | null = null;
+  try {
+    const res = await fetch(project.screenUrl);
+    if (res.ok) screenArrayBuffer = await res.arrayBuffer();
+  } catch {
+    screenArrayBuffer = null;
+  }
 
-  const sources: RenderSources = { screenVideo, cameraVideo, customBgImage };
+  const audioBufferPromise = decodeTrimmedAudioBuffer(
+    project,
+    project.trimStart,
+    trimmedDuration,
+    screenArrayBuffer,
+  );
+  const customBgImagePromise = project.canvas.customBackgroundUrl
+    ? loadImageElement(project.canvas.customBackgroundUrl)
+    : Promise.resolve(null);
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true })!;
+  const ctx = canvas.getContext("2d", { alpha: false })!;
 
-  const videoCodec = await pickWebCodecsVideoCodec(
+  const videoEncoderConfig = await pickWebCodecsVideoConfig(
     options.format,
     width,
     height,
@@ -320,9 +611,20 @@ export async function exportProjectLocally(
     bitrateBps,
   );
 
-  // Path A: High-Speed Hardware WebCodecs + mp4-muxer / webm-muxer
-  if (videoCodec) {
-    const audioBuffer = await audioBufferPromise;
+  // Path A: Frame-Accurate Hardware WebCodecs (VideoDecoder + VideoEncoder) + mp4-muxer / webm-muxer
+  if (videoEncoderConfig) {
+    const [screenStreamRes, cameraStreamRes, customBgImage, audioBuffer] = await Promise.all([
+      createFrameSource(project.screenUrl, project.trimStart, screenArrayBuffer),
+      project.camera.enabled && project.cameraUrl
+        ? createFrameSource(project.cameraUrl, project.trimStart).catch(() => null)
+        : Promise.resolve(null),
+      customBgImagePromise,
+      audioBufferPromise,
+    ]);
+
+    const screenSource = screenStreamRes.source;
+    const cameraSource = cameraStreamRes?.source ?? null;
+
     const hasAudioEncoder =
       audioBuffer !== null && typeof AudioEncoder !== "undefined" && typeof AudioData !== "undefined";
 
@@ -366,7 +668,7 @@ export async function exportProjectLocally(
       ? new WebmMuxer({
           target: webmTarget!,
           video: {
-            codec: videoCodec.startsWith("vp09") ? "V_VP9" : "V_VP8",
+            codec: videoEncoderConfig.codec.startsWith("vp09") ? "V_VP9" : "V_VP8",
             width,
             height,
             frameRate: options.fps,
@@ -393,37 +695,7 @@ export async function exportProjectLocally(
       },
     });
 
-    videoEncoder.configure({
-      codec: videoCodec,
-      width,
-      height,
-      bitrate: bitrateBps,
-      framerate: options.fps,
-      hardwareAcceleration: "prefer-hardware",
-      latencyMode: "realtime",
-    });
-
-    // Seek both videos ONCE to trimStart before starting linear hardware decode
-    await Promise.all([
-      seekVideo(screenVideo, project.trimStart, 0.005),
-      cameraVideo ? seekVideo(cameraVideo, project.trimStart, 0.005) : Promise.resolve(),
-    ]);
-
-    const targetPlaybackRate =
-      options.resolution === "720p"
-        ? 4.0
-        : options.resolution === "1080p"
-          ? 3.5
-          : options.resolution === "1440p"
-            ? 2.25
-            : 1.5;
-
-    setSafePlaybackRate(screenVideo, targetPlaybackRate);
-    void screenVideo.play().catch(() => {});
-    if (cameraVideo) {
-      setSafePlaybackRate(cameraVideo, targetPlaybackRate);
-      void cameraVideo.play().catch(() => {});
-    }
+    videoEncoder.configure(videoEncoderConfig);
 
     const startWall = performance.now();
     const frameDurationUs = Math.round(1_000_000 / options.fps);
@@ -432,33 +704,41 @@ export async function exportProjectLocally(
     try {
       for (let f = 0; f < totalFrames; f++) {
         if (signal?.aborted) {
-          videoEncoder.close();
           throw new DOMException("Export cancelled", "AbortError");
         }
         if (encodeError) {
-          videoEncoder.close();
           throw encodeError;
         }
 
         const t = project.trimStart + f / options.fps;
-        await advanceVideosToTime(screenVideo, cameraVideo, t, targetPlaybackRate);
+        const [screenDrawable, cameraDrawable] = await Promise.all([
+          screenSource.getFrameAtTime(t),
+          cameraSource ? cameraSource.getFrameAtTime(t) : Promise.resolve(null),
+        ]);
+
+        const sources: RenderSources = {
+          screenVideo: screenDrawable,
+          cameraVideo: cameraDrawable,
+          customBgImage,
+        };
 
         renderCompositionFrame(ctx, project, t, sources);
 
+        const timestampUs = Math.round((f * 1_000_000) / options.fps);
         const frame = new VideoFrame(canvas, {
-          timestamp: f * frameDurationUs,
+          timestamp: timestampUs,
           duration: frameDurationUs,
         });
         videoEncoder.encode(frame, { keyFrame: f % (options.fps * 2) === 0 });
         frame.close();
 
-        // Pause playback briefly only if hardware encoder queue gets full
-        if (videoEncoder.encodeQueueSize > 14) {
-          screenVideo.pause();
-          cameraVideo?.pause();
-          while (videoEncoder.encodeQueueSize > 6) {
-            await new Promise((r) => window.setTimeout(r, 4));
+        // Apply backpressure so hardware encoder never drops frames or spikes VRAM
+        while (videoEncoder.encodeQueueSize > 8) {
+          if (signal?.aborted) {
+            throw new DOMException("Export cancelled", "AbortError");
           }
+          if (encodeError) throw encodeError;
+          await new Promise((r) => window.setTimeout(r, 4));
         }
 
         if (f % progressStep === 0 || f === totalFrames - 1) {
@@ -473,26 +753,35 @@ export async function exportProjectLocally(
             etaSeconds: eta,
             message: `Rendering frame ${f + 1} of ${totalFrames} (${width}×${height})…`,
           });
+          // Let the UI paint progress smoothly without blocking the event loop
+          await new Promise((r) => window.setTimeout(r, 0));
         }
       }
+
+      onProgress({
+        phase: "finalizing",
+        progress: 0.92,
+        currentFrame: totalFrames,
+        totalFrames,
+        etaSeconds: 1,
+        message: "Encoding audio & muxing container…",
+      });
+
+      await videoEncoder.flush();
+      if (encodeError) throw encodeError;
     } finally {
-      screenVideo.pause();
-      cameraVideo?.pause();
+      screenSource.dispose();
+      cameraSource?.dispose();
+      try {
+        if (videoEncoder.state !== "closed") {
+          videoEncoder.close();
+        }
+      } catch {
+        /* ignore */
+      }
     }
 
-    onProgress({
-      phase: "finalizing",
-      progress: 0.92,
-      currentFrame: totalFrames,
-      totalFrames,
-      etaSeconds: 1,
-      message: "Encoding audio & muxing container…",
-    });
-
-    await videoEncoder.flush();
-    videoEncoder.close();
-
-    // Encode audio in large 16,384-frame blocks for fast flushing
+    // Encode audio in 16,384-frame blocks for fast flushing
     if (includeAudio && audioBuffer) {
       const audioEncoder = new AudioEncoder({
         output: (chunk, meta) => {
@@ -543,7 +832,17 @@ export async function exportProjectLocally(
     }
   }
 
-  // Path B: Accelerated MediaRecorder fallback (when WebCodecs H.264/VP9 is unavailable)
+  // Path B: Real-time MediaRecorder fallback (when WebCodecs VideoEncoder is unavailable)
+  const fallbackHost = createHiddenVideoHost();
+  const [screenVideo, cameraVideo, customBgImage] = await Promise.all([
+    loadVideoElement(project.screenUrl, fallbackHost),
+    project.camera.enabled && project.cameraUrl
+      ? loadVideoElement(project.cameraUrl, fallbackHost).catch(() => null)
+      : Promise.resolve(null),
+    customBgImagePromise,
+  ]);
+  const sources: RenderSources = { screenVideo, cameraVideo, customBgImage };
+
   const fallbackMime =
     options.format === "mp4" && MediaRecorder.isTypeSupported("video/mp4")
       ? "video/mp4"
@@ -561,53 +860,62 @@ export async function exportProjectLocally(
     if (e.data.size > 0) chunks.push(e.data);
   };
 
-  await Promise.all([
-    seekVideo(screenVideo, project.trimStart, 0.005),
-    cameraVideo ? seekVideo(cameraVideo, project.trimStart, 0.005) : Promise.resolve(),
-  ]);
+  try {
+    await Promise.all([
+      seekVideoExact(screenVideo, project.trimStart),
+      cameraVideo ? seekVideoExact(cameraVideo, project.trimStart) : Promise.resolve(),
+    ]);
 
-  recorder.start(250);
-  setSafePlaybackRate(screenVideo, 1.0);
-  void screenVideo.play().catch(() => {});
-  if (cameraVideo) {
-    setSafePlaybackRate(cameraVideo, 1.0);
-    void cameraVideo.play().catch(() => {});
+    recorder.start(250);
+    screenVideo.playbackRate = 1.0;
+    await screenVideo.play().catch(() => {});
+    if (cameraVideo) {
+      cameraVideo.playbackRate = 1.0;
+      void cameraVideo.play().catch(() => {});
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let rafId = 0;
+      const tick = () => {
+        if (signal?.aborted) {
+          window.cancelAnimationFrame(rafId);
+          screenVideo.pause();
+          cameraVideo?.pause();
+          recorder.stop();
+          reject(new DOMException("Export cancelled", "AbortError"));
+          return;
+        }
+        const t = screenVideo.currentTime;
+        if (t >= project.trimEnd || screenVideo.ended) {
+          screenVideo.pause();
+          cameraVideo?.pause();
+          resolve();
+          return;
+        }
+        if (cameraVideo && Math.abs(cameraVideo.currentTime - t) > 0.05) {
+          cameraVideo.currentTime = t;
+        }
+        renderCompositionFrame(ctx, project, t, sources);
+
+        const elapsed = Math.max(0, t - project.trimStart);
+        const frac = Math.min(1, elapsed / trimmedDuration);
+        onProgress({
+          phase: "rendering",
+          progress: 0.05 + frac * 0.9,
+          currentFrame: Math.min(totalFrames, Math.round(elapsed * options.fps)),
+          totalFrames,
+          etaSeconds: Math.max(0, trimmedDuration - elapsed),
+          message: `Rendering locally (${Math.round(frac * 100)}%)…`,
+        });
+        rafId = window.requestAnimationFrame(tick);
+      };
+      rafId = window.requestAnimationFrame(tick);
+    });
+  } finally {
+    screenVideo.pause();
+    cameraVideo?.pause();
+    fallbackHost?.remove();
   }
-  const startWall = performance.now();
-
-  await new Promise<void>((resolve, reject) => {
-    const tick = async () => {
-      if (signal?.aborted) {
-        screenVideo.pause();
-        cameraVideo?.pause();
-        recorder.stop();
-        reject(new DOMException("Export cancelled", "AbortError"));
-        return;
-      }
-      const elapsed = (performance.now() - startWall) / 1000;
-      const t = project.trimStart + elapsed;
-      if (t >= project.trimEnd || screenVideo.ended) {
-        screenVideo.pause();
-        cameraVideo?.pause();
-        resolve();
-        return;
-      }
-      await advanceVideosToTime(screenVideo, cameraVideo, t, 1.0);
-      renderCompositionFrame(ctx, project, t, sources);
-
-      const frac = Math.min(1, elapsed / trimmedDuration);
-      onProgress({
-        phase: "rendering",
-        progress: 0.05 + frac * 0.9,
-        currentFrame: Math.min(totalFrames, Math.round(elapsed * options.fps)),
-        totalFrames,
-        etaSeconds: Math.max(0, trimmedDuration - elapsed),
-        message: `Rendering locally (${Math.round(frac * 100)}%)…`,
-      });
-      window.setTimeout(() => void tick(), Math.max(12, Math.round(1000 / options.fps)));
-    };
-    void tick();
-  });
 
   return new Promise<Blob>((resolve) => {
     recorder.onstop = () => resolve(new Blob(chunks, { type: fallbackMime }));

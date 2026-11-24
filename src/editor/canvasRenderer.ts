@@ -26,10 +26,25 @@ export interface CanvasGeometry {
   cameraRect: { x: number; y: number; w: number; h: number } | null;
 }
 
+export type VideoDrawableSource = HTMLVideoElement | HTMLCanvasElement | VideoFrame;
+
 export interface RenderSources {
-  screenVideo: HTMLVideoElement | HTMLCanvasElement | null;
-  cameraVideo: HTMLVideoElement | HTMLCanvasElement | null;
+  screenVideo: VideoDrawableSource | null;
+  cameraVideo: VideoDrawableSource | null;
   customBgImage: HTMLImageElement | null;
+}
+
+function getDrawableDimensions(src: VideoDrawableSource): { w: number; h: number } {
+  if (typeof VideoFrame !== "undefined" && src instanceof VideoFrame) {
+    return {
+      w: src.displayWidth || src.codedWidth,
+      h: src.displayHeight || src.codedHeight,
+    };
+  }
+  if (src instanceof HTMLVideoElement) {
+    return { w: src.videoWidth, h: src.videoHeight };
+  }
+  return { w: (src as HTMLCanvasElement).width, h: (src as HTMLCanvasElement).height };
 }
 
 // ============================================================================
@@ -453,12 +468,13 @@ export function renderCompositionFrame(
     ctx.translate(-pivotX, -pivotY);
   }
 
-  // Draw screen source
+  // Draw screen source with high-quality filtering so animations & zoomed text stay sharp
   const screenSrc = sources.screenVideo;
   if (screenSrc) {
-    const sw = screenSrc instanceof HTMLVideoElement ? screenSrc.videoWidth : screenSrc.width;
-    const sh = screenSrc instanceof HTMLVideoElement ? screenSrc.videoHeight : screenSrc.height;
+    const { w: sw, h: sh } = getDrawableDimensions(screenSrc);
     if (sw > 0 && sh > 0) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       if (project.canvas.framing === "fill") {
         drawCoverImage(ctx, screenSrc, sw, sh, geom.frameX, geom.frameY, geom.frameW, geom.frameH);
       } else {
@@ -529,7 +545,7 @@ export function renderCompositionFrame(
 
 function drawBlurRegion(
   ctx: CanvasRenderingContext2D,
-  screenSrc: HTMLVideoElement | HTMLCanvasElement | null,
+  screenSrc: VideoDrawableSource | null,
   geom: CanvasGeometry,
   blur: BlurRegion,
   isSelected?: boolean,
@@ -546,8 +562,7 @@ function drawBlurRegion(
   ctx.clip();
 
   if (screenSrc && typeof document !== "undefined") {
-    const sw = screenSrc instanceof HTMLVideoElement ? screenSrc.videoWidth : screenSrc.width;
-    const sh = screenSrc instanceof HTMLVideoElement ? screenSrc.videoHeight : screenSrc.height;
+    const { w: sw, h: sh } = getDrawableDimensions(screenSrc);
     if (sw > 0 && sh > 0) {
       // Fast hardware-accelerated downscale-upscale blur on ONLY the cropped region
       const downFactor = Math.max(6, Math.min(28, Math.round(blur.intensity * 0.85)));
@@ -671,11 +686,10 @@ function drawCursorOverlay(
 function drawCameraOverlay(
   ctx: CanvasRenderingContext2D,
   camera: CameraOverlayConfig,
-  camSrc: HTMLVideoElement | HTMLCanvasElement,
+  camSrc: VideoDrawableSource,
   rect: { x: number; y: number; w: number; h: number },
 ) {
-  const sw = camSrc instanceof HTMLVideoElement ? camSrc.videoWidth : camSrc.width;
-  const sh = camSrc instanceof HTMLVideoElement ? camSrc.videoHeight : camSrc.height;
+  const { w: sw, h: sh } = getDrawableDimensions(camSrc);
   if (sw <= 0 || sh <= 0) return;
 
   const r =
