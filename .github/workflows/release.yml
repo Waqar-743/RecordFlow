@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.3.3)'
+        description: 'Version tag (e.g., v1.3.4)'
         required: true
-        default: 'v1.3.3'
+        default: 'v1.3.4'
 
 # Required permissions for creating releases
 permissions:
@@ -48,26 +48,22 @@ jobs:
           tagName: ${{ github.event.inputs.version || github.ref_name }}
           releaseName: 'RecordFlow ${{ github.event.inputs.version || github.ref_name }}'
           releaseBody: |
-            ## RecordFlow v1.3.3 — Live Window Previews, Fullscreen Layout Fix, Conflict-Free Hotkeys & Official Brand Header
+            ## RecordFlow v1.3.4 — Frame-Accurate Smooth Export Animations & Smart Fullscreen Area-Picker Toolbar
 
             ### Download
             Download the `.exe` or `.msi` installer for Windows below. 100% free, open-source, no watermarks, and zero cloud uploads.
 
-            ### What's New in v1.3.3
-            - **Fixed Selected Window Live Preview**:
-              - Replaced desktop-crop thumbnails with direct per-window capture via `PrintWindow(PW_RENDERFULLCONTENT)` (cropping invisible DWM drop-shadow borders) so selecting any window updates the right preview container with that window's actual content even when covered by RecordFlow.
-              - Added immediate on-demand preview refresh when selecting a window, removed the 8-window thumbnail limit, added a refresh button on the window preview stage, and prevented stale settings overwrites during async mode changes.
-            - **Fixed Fullscreen / Maximized Viewport Layout & Scrolling**:
-              - Lowered minimum window dimensions (`900×560`) and fixed flex `min-h-0` / responsive stage heights so the bottom controls and **Start recording** action bar stay fully visible and scrollable on all screen resolutions and DPI scales.
-            - **Fixed `Alt+Shift+R` Global Shortcut Conflict**:
-              - Switched default global hotkeys to conflict-free `Ctrl+Alt+Shift+R` (Start/Stop) and `Ctrl+Alt+Shift+P` (Pause/Resume).
-              - Added automatic conflict-free startup fallback when an existing saved hotkey is already taken by another app, clean human-readable conflict messages, and hotkey cleanup on app exit.
-            - **Official RecordFlow Brand Icon in Top-Left Header**:
-              - Replaced the placeholder header icon with the official RecordFlow logo (`/recordflow.png`).
-            - **Includes all v1.3.2 highlights**:
-              - 15x–25x faster local export with linear hardware decoding and offscreen backdrop/shadow caching, plus **Instant save original**.
-              - Graceful Windows Graphics Capture fallback for `BorderConfigUnsupported` & cursor settings.
-              - Bulletproof recordings folder resolution with interactive folder selector, interactive area selection, and the 8 warm studio themes.
+            ### What's New in v1.3.4
+            - **Fixed Choppy / Missing Animations in Exported Videos**:
+              - Replaced offscreen high-speed `<video>` playback in the local export engine with a lightweight ISO-BMFF MP4 demuxer + hardware-accelerated WebCodecs `VideoDecoder` pipeline (`Mp4VideoFrameStream`) that decodes every source frame sequentially in exact presentation order — eliminating frozen frames, skipped CSS/UI animations, and cursor/video desync.
+              - Added a deterministic paused-seek DOM-attached fallback for WebM and non-WebCodecs clips, switched WebCodecs `VideoEncoder` to `latencyMode: "quality"` (preventing encoder frame drops), removed `desynchronized` canvas buffer tearing, and enabled high-quality image smoothing for crisp motion & zooms.
+              - Kept Edit Studio preview video decoders in the compositor layer for smoother 60fps preview playback.
+            - **Fixed Area-Selection "Start recording" Toolbar Overlap on Full-Screen Drags**:
+              - Added a viewport-aware 3-tier collision-free toolbar layout (`below → above → inside-bottom`) with live `ResizeObserver` measurement and horizontal viewport clamping so the **Start recording** action bar automatically adjusts itself and stays 100% visible and clickable even when selecting the full screen or dragging near screen edges.
+              - Automatically hides the top guidance pill once a selection toolbar is active (and makes it non-blocking while dragging) so nothing ever overrides or covers the **Start recording** controls.
+              - Anchored the inline preview stage area action pill cleanly inside the preview bounds.
+            - **Includes all v1.3.3 highlights**:
+              - Direct `PrintWindow` selected-window live previews, conflict-free `Ctrl+Alt+Shift+R/P` global shortcuts, fullscreen viewport scrolling, and official brand header.
 
             ### System Requirements
             - Windows 10 version 1903 (build 18362) or later (x64)
