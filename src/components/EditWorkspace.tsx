@@ -430,14 +430,15 @@ export function EditWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* Hidden Synchronized Video Decoders */}
+      {/* Offscreen Synchronized Video Decoders (kept in compositor layer for smooth 60fps playback) */}
       <video
         ref={screenVideoRef}
         src={project.screenUrl}
         playsInline
         preload="auto"
         crossOrigin="anonymous"
-        className="hidden"
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 -z-10 h-0.5 w-0.5 opacity-[0.001]"
         onLoadedMetadata={(e) => {
           const v = e.currentTarget;
           if (Number.isFinite(v.duration) && v.duration > 0.2 && Math.abs(v.duration - project.duration) > 0.4) {
@@ -459,7 +460,8 @@ export function EditWorkspace({
           playsInline
           preload="auto"
           crossOrigin="anonymous"
-          className="hidden"
+          aria-hidden="true"
+          className="pointer-events-none fixed left-0 top-0 -z-10 h-0.5 w-0.5 opacity-[0.001]"
         />
       )}
 
