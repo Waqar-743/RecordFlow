@@ -15,7 +15,7 @@
       <img alt="Official Website" src="https://img.shields.io/badge/Website-Live%20Interactive%20Demo-ff6b4a?style=for-the-badge&logo=googlechrome&logoColor=white" />
     </a>
     <a href="https://github.com/Waqar-743/RecordFlow/releases/latest">
-      <img alt="Download RecordFlow v1.3.4" src="https://img.shields.io/badge/Download-v1.3.4%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" />
+      <img alt="Download RecordFlow v1.3.5" src="https://img.shields.io/badge/Download-v1.3.5%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" />
     </a>
   </p>
 
@@ -45,7 +45,7 @@
 **RecordFlow** combines native Windows screen-capture speed with a modern, non-destructive post-recording presentation studio — without accounts, watermarks, subscriptions, or cloud uploads.
 
 - **Try the Interactive Studio Preview Online:** [waqar-743.github.io/RecordFlow](https://waqar-743.github.io/RecordFlow/)
-- **Stays Invisible While Recording:** Both the main RecordFlow window and the always-on-top **Presenter Script Teleprompter** use `WDA_EXCLUDEFROMCAPTURE`, so your controls and notes never leak into the captured video.
+- **Stays Invisible While Recording:** The main RecordFlow window, the always-on-top **Floating Recording Control Pill** (draggable anywhere to pause/stop without leaving your app), and the **Presenter Script Teleprompter** all use `WDA_EXCLUDEFROMCAPTURE`, so your controls and notes never leak into the captured video.
 - **Edit Non-Destructively After Stopping:** Because your cursor clicks (`.cursor.json`) and webcam (`.cam.mp4`) are captured as independent synchronized tracks, you can generate smooth auto-zooms, reposition or reshape your camera overlay, swap backgrounds, blur sensitive regions, and export locally up to **4K 60fps MP4 or WebM**.
 
 ---
@@ -56,8 +56,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 | Installer | File Name | Size | Best For |
 | :--- | :--- | :---: | :--- |
-| **EXE Setup (Recommended)** | [`RecordFlow_1.3.4_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
-| **MSI Package** | [`RecordFlow_1.3.4_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
+| **EXE Setup (Recommended)** | [`RecordFlow_1.3.5_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
+| **MSI Package** | [`RecordFlow_1.3.5_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
 
 > **100% Offline & Private:** Rendered entirely on your computer. Zero bytes uploaded, zero watermarks, zero time limits.
 
@@ -83,7 +83,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 - **Resolutions:** `4K (2160p)`, `1440p (QHD)`, `1080p (Full HD)`, `720p`.
 - **Frame Rates & Quality:** `60 fps` or `30 fps` with `Best`, `High`, and `Small` quality profiles.
 
-### 4. Studio Experience, Themes & Teleprompter
+### 4. Studio Experience, Floating Controls, Themes & Teleprompter
+- **Draggable Invisible Floating Controls:** Compact always-on-top recording pill (timer, Pause/Resume, Stop) that spawns automatically when recording starts, can be dragged to any corner (remembers its position), and stays 100% invisible in the recorded video via `WDA_EXCLUDEFROMCAPTURE`.
 - **Invisible Presenter Script Teleprompter:** Always-on-top script window protected by `WDA_EXCLUDEFROMCAPTURE` so you maintain eye contact while reading notes unseen by viewers.
 - **8 Dynamic Studio Themes:** Switch live with instant surface updates and persistence across **Obsidian Flame**, **Molten Ember**, **Crimson Noir**, **Burnished Copper**, **Velvet Rosé**, **Royal Amethyst**, **Editorial Ivory**, and **Alabaster Sun**.
 - **Conflict-Free Shortcuts & System Tray:** Automatic hotkey conflict detection with fallback and dismissible alert banners.
@@ -92,7 +93,7 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 ## Why RecordFlow?
 
-| Capability | RecordFlow v1.3.4 | Cloud Recorders (Loom, etc.) | Heavy Suites (OBS / Camtasia) |
+| Capability | RecordFlow v1.3.5 | Cloud Recorders (Loom, etc.) | Heavy Suites (OBS / Camtasia) |
 | :--- | :---: | :---: | :---: |
 | **Price** | **Free & Open Source** | Monthly subscription | Free (OBS) / Paid (Camtasia) |
 | **Installer Size** | **2.97 MB** | 120–250 MB | 150–600 MB+ |
