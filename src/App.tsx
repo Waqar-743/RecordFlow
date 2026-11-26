@@ -1,4 +1,5 @@
 import "./styles/app.css";
+import { FloatingRecordingControls } from "./components/FloatingRecordingControls";
 import { RegionPickerWindow } from "./components/RegionPickerWindow";
 import { TeleprompterWindow } from "./components/TeleprompterWindow";
 import { StudioApp } from "./pages/StudioApp";
@@ -19,6 +20,14 @@ function App() {
     return (
       <ThemeProvider>
         <TeleprompterWindow standalone />
+      </ThemeProvider>
+    );
+  }
+
+  if (params.get("controls") === "1") {
+    return (
+      <ThemeProvider>
+        <FloatingRecordingControls standalone />
       </ThemeProvider>
     );
   }

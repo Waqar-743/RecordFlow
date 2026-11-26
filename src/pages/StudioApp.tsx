@@ -5,6 +5,12 @@ import { AlertBanner } from "../components/AlertBanner";
 import { CountdownOverlay } from "../components/CountdownOverlay";
 import { EditWorkspace } from "../components/EditWorkspace";
 import { ExportModal } from "../components/ExportModal";
+import {
+  FLOATING_CONTROLS_HEIGHT,
+  FLOATING_CONTROLS_POS_KEY,
+  FLOATING_CONTROLS_WIDTH,
+  FloatingRecordingControls,
+} from "../components/FloatingRecordingControls";
 import { HotkeyModal } from "../components/HotkeyModal";
 import { RecordWorkspace } from "../components/RecordWorkspace";
 import { ScreenRegionPicker, type AreaPickRequest } from "../components/ScreenRegionPicker";
@@ -44,6 +50,62 @@ import type {
 } from "../types";
 
 const TELEPROMPTER_WINDOW_LABEL = "teleprompter";
+const FLOATING_CONTROLS_WINDOW_LABEL = "recording-controls";
+
+function resolveFloatingControlsPosition(
+  displays: DisplayInfo[],
+  activeDisplay: DisplayInfo | null,
+): { x: number; y: number } {
+  const dpr = window.devicePixelRatio || 1;
+  const logicalDisplays = displays.map((d) => ({
+    x: Math.round(d.x / dpr),
+    y: Math.round(d.y / dpr),
+    w: Math.max(320, Math.round(d.width / dpr)),
+    h: Math.max(240, Math.round(d.height / dpr)),
+  }));
+
+  try {
+    const raw = window.localStorage.getItem(FLOATING_CONTROLS_POS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+      if (typeof parsed.x === "number" && typeof parsed.y === "number" && Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+        const savedX = Math.round(parsed.x);
+        const savedY = Math.round(parsed.y);
+        const fitsDisplay =
+          logicalDisplays.length === 0 ||
+          logicalDisplays.some(
+            (d) =>
+              savedX >= d.x - 16 &&
+              savedY >= d.y - 16 &&
+              savedX + FLOATING_CONTROLS_WIDTH <= d.x + d.w + 16 &&
+              savedY + FLOATING_CONTROLS_HEIGHT <= d.y + d.h + 16,
+          );
+        if (fitsDisplay) {
+          return { x: savedX, y: savedY };
+        }
+      }
+    }
+  } catch {
+    /* ignore malformed stored coordinates */
+  }
+
+  const target = activeDisplay ?? displays[0] ?? null;
+  if (target) {
+    const lx = Math.round(target.x / dpr);
+    const ly = Math.round(target.y / dpr);
+    const lw = Math.max(320, Math.round(target.width / dpr));
+    const lh = Math.max(240, Math.round(target.height / dpr));
+    return {
+      x: Math.max(lx + 16, lx + lw - FLOATING_CONTROLS_WIDTH - 24),
+      y: Math.max(ly + 16, ly + lh - FLOATING_CONTROLS_HEIGHT - 72),
+    };
+  }
+
+  return {
+    x: Math.max(24, (window.screen?.availWidth ?? 1280) - FLOATING_CONTROLS_WIDTH - 24),
+    y: Math.max(24, (window.screen?.availHeight ?? 760) - FLOATING_CONTROLS_HEIGHT - 72),
+  };
+}
 
 export function StudioApp() {
   const { settings, loading: settingsLoading, error: settingsError, updateSettings } = useSettings();
@@ -398,6 +460,69 @@ export function StudioApp() {
       });
     }
   }, [recording, showAlert]);
+
+  // Auto-open/close the capture-excluded floating recording control pill in Tauri desktop mode
+  const displaysRef = useRef<DisplayInfo[]>(displays);
+  displaysRef.current = displays;
+  const activeDisplayRef = useRef<DisplayInfo | null>(activeDisplay);
+  activeDisplayRef.current = activeDisplay;
+
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    let cancelled = false;
+
+    const syncFloatingControls = async () => {
+      try {
+        const existing = await WebviewWindow.getByLabel(FLOATING_CONTROLS_WINDOW_LABEL);
+        if (recording.status.is_recording) {
+          if (existing || cancelled) return;
+          const pos = resolveFloatingControlsPosition(
+            displaysRef.current,
+            activeDisplayRef.current,
+          );
+          const pill = new WebviewWindow(FLOATING_CONTROLS_WINDOW_LABEL, {
+            url: "/?controls=1",
+            title: "RecordFlow Controls",
+            x: pos.x,
+            y: pos.y,
+            width: FLOATING_CONTROLS_WIDTH,
+            height: FLOATING_CONTROLS_HEIGHT,
+            decorations: false,
+            transparent: true,
+            shadow: false,
+            resizable: false,
+            alwaysOnTop: true,
+            skipTaskbar: true,
+            contentProtected: true,
+            visible: true,
+            focus: false,
+          });
+          void pill.once("tauri://error", () => {
+            /* non-fatal: tray & global hotkeys remain active */
+          });
+        } else if (existing) {
+          await existing.close();
+        }
+      } catch {
+        /* ignore transient window lookup errors */
+      }
+    };
+
+    void syncFloatingControls();
+    return () => {
+      cancelled = true;
+    };
+  }, [recording.status.is_recording]);
+
+  // Ensure floating controls window is closed if StudioApp unmounts
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    return () => {
+      void WebviewWindow.getByLabel(FLOATING_CONTROLS_WINDOW_LABEL)
+        .then((w) => w?.close())
+        .catch(() => {});
+    };
+  }, []);
 
   // Automatic transition to Edit Studio when a native Tauri recording completes
   useEffect(() => {
@@ -920,14 +1045,25 @@ export function StudioApp() {
       {/* 8. Countdown Overlay */}
       <CountdownOverlay count={activeCountdown} onCancel={cancelCountdown} />
 
-      {/* 9. Browser Fallback Floating Presenter Script Panel */}
+      {/* 9. Browser Fallback Floating Presenter Script Panel & Floating Recording Pill */}
       {!isTauriApp() && (
-        <TeleprompterWindow
-          isOpen={isScriptOpen}
-          isRecording={recording.status.is_recording}
-          isPaused={recording.status.is_paused}
-          onClose={() => setIsScriptOpen(false)}
-        />
+        <>
+          <TeleprompterWindow
+            isOpen={isScriptOpen}
+            isRecording={recording.status.is_recording}
+            isPaused={recording.status.is_paused}
+            onClose={() => setIsScriptOpen(false)}
+          />
+          <FloatingRecordingControls
+            isRecording={recording.status.is_recording}
+            isPaused={recording.status.is_paused}
+            elapsedSeconds={recording.status.elapsed_seconds}
+            loading={recording.loading}
+            onPause={() => void handlePauseRecording()}
+            onResume={() => void handleResumeRecording()}
+            onStop={() => void handleStopRecording()}
+          />
+        </>
       )}
     </div>
   );
