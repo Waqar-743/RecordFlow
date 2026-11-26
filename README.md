@@ -7,7 +7,7 @@
 
   <p>
     <strong>A 100% free, open-source, privacy-first Windows screen recorder &amp; post-recording auto-zoom studio.</strong><br />
-    Invisible to Windows capture (<code>WDA_EXCLUDEFROMCAPTURE</code>) · 60 Hz click tracking · Independent webcam layer · 4K 60fps local export — in a <strong>2.97 MB</strong> native Rust &amp; Tauri v2 app.
+    Invisible to Windows capture (<code>WDA_EXCLUDEFROMCAPTURE</code>) · 60 Hz click tracking · Independent webcam layer · 4K 60fps local export — in a <strong>2.98 MB</strong> native Rust &amp; Tauri v2 app.
   </p>
 
   <p>
@@ -24,7 +24,7 @@
     <a href="https://github.com/Waqar-743/RecordFlow/releases"><img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/Waqar-743/RecordFlow/total?style=flat-square&color=22c55e" /></a>
     <a href="https://github.com/Waqar-743/RecordFlow/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/Waqar-743/RecordFlow?style=flat-square&color=f59e0b" /></a>
     <img alt="Platform Windows 10/11 x64" src="https://img.shields.io/badge/Platform-Windows%2010%2F11%20x64-0ea5e9?style=flat-square" />
-    <img alt="Installer Size 2.97 MB" src="https://img.shields.io/badge/Installer-2.97%20MB%20Native-8b5cf6?style=flat-square" />
+    <img alt="Installer Size 2.98 MB" src="https://img.shields.io/badge/Installer-2.98%20MB%20Native-8b5cf6?style=flat-square" />
   </p>
 
   <p>
@@ -56,8 +56,8 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 
 | Installer | File Name | Size | Best For |
 | :--- | :--- | :---: | :--- |
-| **EXE Setup (Recommended)** | [`RecordFlow_1.3.5_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.97 MB` | Standard Windows 10/11 desktop installation |
-| **MSI Package** | [`RecordFlow_1.3.5_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.59 MB` | Silent installs, IT rollouts & Group Policy |
+| **EXE Setup (Recommended)** | [`RecordFlow_1.3.5_x64-setup.exe`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `2.98 MB` | Standard Windows 10/11 desktop installation |
+| **MSI Package** | [`RecordFlow_1.3.5_x64_en-US.msi`](https://github.com/Waqar-743/RecordFlow/releases/latest) | `3.60 MB` | Silent installs, IT rollouts & Group Policy |
 
 > **100% Offline & Private:** Rendered entirely on your computer. Zero bytes uploaded, zero watermarks, zero time limits.
 
@@ -96,7 +96,7 @@ Get the latest official release from [GitHub Releases](https://github.com/Waqar-
 | Capability | RecordFlow v1.3.5 | Cloud Recorders (Loom, etc.) | Heavy Suites (OBS / Camtasia) |
 | :--- | :---: | :---: | :---: |
 | **Price** | **Free & Open Source** | Monthly subscription | Free (OBS) / Paid (Camtasia) |
-| **Installer Size** | **2.97 MB** | 120–250 MB | 150–600 MB+ |
+| **Installer Size** | **2.98 MB** | 120–250 MB | 150–600 MB+ |
 | **Invisible UI & Teleprompter** | **Built-in (`WDA_EXCLUDEFROMCAPTURE`)** | Often captured | Manual setup |
 | **60 Hz Click Auto-Zoom** | **One-click built-in** | No | Manual keyframes |
 | **Post-Recording Editable Webcam** | **Yes (`.cam.mp4`)** | Baked in | Complex multi-track |
