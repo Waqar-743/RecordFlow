@@ -21,11 +21,15 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Transparent root when rendered as the fullscreen Tauri region picker overlay */
+/* Transparent root when rendered as the fullscreen region picker or floating control pill */
 html.rf-picker-mode,
 html.rf-picker-mode body,
-html.rf-picker-mode #root {
+html.rf-picker-mode #root,
+html.rf-floating-controls-mode,
+html.rf-floating-controls-mode body,
+html.rf-floating-controls-mode #root {
   background: transparent !important;
+  overflow: hidden !important;
 }
 
 .font-mono {
